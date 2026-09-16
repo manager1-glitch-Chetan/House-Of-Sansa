@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  /* House of Sansa premium palette — deep charcoal, warm gold, ivory */
+  --color-hos-gold-50: #fbf7ed;
+  --color-hos-gold-100: #f4ead0;
+  --color-hos-gold-200: #e9d5a3;
+  --color-hos-gold-300: #dcbb70;
+  --color-hos-gold-400: #cda249;
+  --color-hos-gold-500: #b6862f;
+  --color-hos-gold-600: #966a25;
+  --color-hos-gold-700: #765121;
+  --color-hos-gold-800: #61441f;
+  --color-hos-gold-900: #52391e;
+
+  --color-hos-ink-50: #f6f7f8;
+  --color-hos-ink-100: #eceef0;
+  --color-hos-ink-200: #d4d8dd;
+  --color-hos-ink-300: #adb5bf;
+  --color-hos-ink-400: #808d9b;
+  --color-hos-ink-500: #62707f;
+  --color-hos-ink-600: #4f5a67;
+  --color-hos-ink-700: #414a55;
+  --color-hos-ink-800: #262b32;
+  --color-hos-ink-900: #16181d;
+  --color-hos-ink-950: #0c0d10;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", ui-serif, Georgia, serif;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-hos-ink-50 text-hos-ink-900;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: theme(--color-hos-ink-300) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: theme(--color-hos-ink-300);
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-xl border border-hos-ink-200/70 shadow-sm;
+  }
+  .input {
+    @apply w-full rounded-lg border border-hos-ink-200 bg-white px-3 py-2 text-sm text-hos-ink-900 placeholder:text-hos-ink-400 focus:outline-none focus:ring-2 focus:ring-hos-gold-400 focus:border-hos-gold-400 disabled:bg-hos-ink-100 disabled:text-hos-ink-500;
+  }
+  .label {
+    @apply block text-xs font-semibold uppercase tracking-wide text-hos-ink-500 mb-1;
+  }
+  .btn,
+  .btn-primary,
+  .btn-gold,
+  .btn-secondary,
+  .btn-outline,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn {
+    @apply bg-hos-ink-100 text-hos-ink-800 hover:bg-hos-ink-200;
+  }
+  .btn-primary {
+    @apply bg-hos-ink-900 text-white hover:bg-hos-ink-800;
+  }
+  .btn-gold {
+    @apply bg-hos-gold-500 text-white hover:bg-hos-gold-600;
+  }
+  .btn-secondary {
+    @apply bg-hos-ink-100 text-hos-ink-800 hover:bg-hos-ink-200;
+  }
+  .btn-outline {
+    @apply border border-hos-ink-300 text-hos-ink-700 hover:bg-hos-ink-100;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1 text-xs;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
