@@ -41,41 +41,10 @@ export default function OverviewTab({ order }) {
           <div className="grid grid-cols-2 gap-4">
             <Row label="Diamond Pcs" value={order.diamond?.pcs} />
             <Row label="Diamond Weight (ct)" value={num(order.diamond?.weight)} />
+            <Row label="Diamond Particular" value={order.diamond?.particular} />
           </div>
         </div>
       </div>
-
-      {order.diamond?.particulars?.length > 0 && (
-        <div className="card p-4">
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-hos-ink-500">Diamond Particulars</h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-hos-ink-400">
-                  <th className="pb-2 pr-4">Shape</th>
-                  <th className="pb-2 pr-4">Size</th>
-                  <th className="pb-2 pr-4">Quality</th>
-                  <th className="pb-2 pr-4">Colour</th>
-                  <th className="pb-2 pr-4">Pcs</th>
-                  <th className="pb-2">Weight (ct)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.diamond.particulars.map((p, i) => (
-                  <tr key={i} className="border-t border-hos-ink-100">
-                    <td className="py-1.5 pr-4 text-hos-ink-800">{p.shape || '—'}</td>
-                    <td className="py-1.5 pr-4 text-hos-ink-800">{p.size || '—'}</td>
-                    <td className="py-1.5 pr-4 text-hos-ink-800">{p.quality || '—'}</td>
-                    <td className="py-1.5 pr-4 text-hos-ink-800">{p.colour || '—'}</td>
-                    <td className="py-1.5 pr-4 text-hos-ink-800">{p.pcs || 0}</td>
-                    <td className="py-1.5 text-hos-ink-800">{num(p.weight)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       <div>
         <FileUpload label="Reference Image" value={order.referenceImage || []} disabled />

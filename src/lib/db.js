@@ -327,7 +327,7 @@ export const Orders = {
       { label: 'Gold Weight', value: data.gold?.estimatedWeight },
       { label: 'Diamond Pcs', value: data.diamond?.pcs },
       { label: 'Diamond Weight', value: data.diamond?.weight },
-      { label: 'Diamond Particulars', value: data.diamond?.particulars?.length ? `${data.diamond.particulars.length} type(s)` : undefined },
+      { label: 'Diamond Particular', value: data.diamond?.particular },
       { label: 'Target Date', value: data.targetDeliveryDate },
     ].filter((f) => f.value !== '' && f.value != null)
 
