@@ -49,6 +49,7 @@ function writeRaw(state) {
 // seedDatabase() (first run) and ensureMasterDefaults() (backfilling a master
 // list that was added to the app after a user's DB was already seeded).
 const MASTER_SEED_DEFAULTS = {
+  karigar: ['Ramesh Sahu', 'Suresh Verma', 'Mahesh Yadav', 'Dinesh Prajapati'],
   metalType: ['Gold', 'Silver'],
   goldPurity: ['14K', '18K', '22K'],
   goldColour: ['Yellow', 'Rose', 'White'],
@@ -90,12 +91,179 @@ function ensureMasterDefaults(state) {
   if (changed) writeRaw(state)
 }
 
+// ---------------------------------------------------------------------------
+// Stage-sequence consistency
+// ---------------------------------------------------------------------------
+// Sensible "filled in, not blank" values for a stage an Admin/Management
+// override skipped past — mirrors the shapes seedOrders.js already uses for
+// each stage, just order-driven instead of seed-index-driven, so a
+// backfilled stage looks properly completed rather than a bare status flip.
+const REPAIR_QC_ITEMS = ['Size Check', 'Diamond Setting Check', 'Prong Check', 'Polishing', 'Finishing', 'Rhodium Check']
+
+function personByRole(role) {
+  return (STATE?.employees || []).find((e) => e.role === role)?.name || 'System'
+}
+
+// Picks a real name from the Karigar master list (now the single source of
+// truth for this — see MASTER_TYPES/MASTER_SEED_DEFAULTS) rather than a
+// frozen hardcoded list, so a repair stays consistent with whatever an
+// admin has actually configured there.
+function randomKarigarName() {
+  const list = STATE?.masters?.karigar || []
+  if (list.length === 0) return 'System'
+  return list[Math.floor(Math.random() * list.length)].name
+}
+
+function defaultCompletedPatch(stageKey, order, completionDate) {
+  const g = order.gold || {}
+  const d = order.diamond || {}
+  switch (stageKey) {
+    case 'planning':
+      return { status: 'Approved', assignedPerson: personByRole('production_manager'), designerName: personByRole('cad_designer'), cadVersion: 'V1', approvedBy: personByRole('production_manager'), completionDate }
+    case 'karigarAssign': {
+      const name = randomKarigarName()
+      return { status: 'Completed', karigarName: name, assignedPerson: name, completionDate }
+    }
+    case 'cad':
+      return { status: 'Approved', assignedPerson: personByRole('cad_designer'), designerName: personByRole('cad_designer'), cadVersion: 'V1', approvedBy: personByRole('management'), completionDate }
+    case 'camRpt':
+      return { status: 'Completed', assignedPerson: personByRole('cam_operator'), machine: 'CAM-01', completionDate }
+    case 'gemStone':
+      return {
+        status: 'Completed',
+        approvedBy: personByRole('production_manager'),
+        particulars: [{ type: 'Ruby', shape: 'Round', size: '4mm', quality: 'AA', colour: 'Red', pcs: 4, weight: 1.2 }],
+        completionDate,
+      }
+    case 'casting':
+      return {
+        status: 'Completed',
+        assignedPerson: personByRole('casting_operator'),
+        castingDate: completionDate,
+        goldPurity: g.purity || '18K',
+        goldColour: g.colour || 'Yellow',
+        sizeOfArticle: order.size || '',
+        plannedPcs: order.quantity || 1,
+        castedPcs: order.quantity || 1,
+        goldWeight: g.estimatedWeight || 0,
+        rejectedPcs: 0,
+        completionDate,
+      }
+    case 'filling':
+      return {
+        status: 'Completed',
+        assignedPerson: personByRole('filling_operator'),
+        fillingType: 'Hand',
+        weightBeforeFilling: g.estimatedWeight || 0,
+        weightAfterFilling: g.estimatedWeight || 0,
+        completionDate,
+      }
+    case 'diamondSetting':
+      return {
+        status: 'Completed',
+        assignedPerson: personByRole('diamond_setter'),
+        shape: 'Round',
+        size: '2.0mm',
+        quality: 'VS1',
+        colour: 'F',
+        issuedPcs: d.pcs || 0,
+        issuedWeight: d.weight || 0,
+        usedPcs: d.pcs || 0,
+        usedWeight: d.weight || 0,
+        completionDate,
+      }
+    case 'rhodium':
+      return {
+        status: 'Completed',
+        assignedPerson: personByRole('rhodium_operator'),
+        rhodiumType: 'Full',
+        weightBefore: g.estimatedWeight || 0,
+        weightAfter: g.estimatedWeight || 0,
+        completionDate,
+      }
+    case 'finalQc':
+      return {
+        status: 'Approved',
+        assignedPerson: personByRole('qc'),
+        finalPcs: order.quantity || 1,
+        finalGoldWeight: g.estimatedWeight || 0,
+        finalDiamondPcs: d.pcs || 0,
+        finalDiamondWeight: d.weight || 0,
+        checklist: REPAIR_QC_ITEMS.map((item) => ({ item, result: 'Pass', remarks: '' })),
+        completionDate,
+      }
+    case 'packing':
+      return { status: 'Packed', assignedPerson: personByRole('packing'), pcs: order.quantity || 1, tagNo: `TAG-${String(order.orderNumber || '').slice(-4) || '0000'}`, completionDate }
+    case 'delivery':
+      return { status: 'Delivered', assignedPerson: personByRole('delivery'), dispatchDate: completionDate, pcs: order.quantity || 1, completionDate }
+    default:
+      return { status: 'Completed', completionDate }
+  }
+}
+
+// One-time-per-load repair for orders whose stage sequence has a "hole" — an
+// earlier stage still Pending while a later one is already terminal. This
+// should be structurally impossible (updateStage's sequential gate blocks
+// it below), but an Admin/Management override intentionally bypasses that
+// gate — see the matching backfill added to updateStage's override branch,
+// which stops new holes; this repairs any that already exist in a user's
+// saved data. Idempotent: a no-op once every order's sequence is clean.
+function ensureStageSequenceConsistency(state) {
+  let changed = false
+  ;(state.orders || []).forEach((order) => {
+    let lastTerminalIdx = -1
+    STAGE_KEYS.forEach((key, i) => {
+      if (TERMINAL_STATUSES.includes(order.stages?.[key]?.status)) lastTerminalIdx = i
+    })
+    for (let i = 0; i < lastTerminalIdx; i++) {
+      const key = STAGE_KEYS[i]
+      const stage = order.stages[key]
+      if (!stage || TERMINAL_STATUSES.includes(stage.status)) continue
+      changed = true
+      const prevStatus = stage.status
+      const next = order.stages[STAGE_KEYS[i + 1]]
+      const completionDate = stage.targetDate || next?.startDate || next?.completionDate || order.orderDate || todayISO()
+      Object.assign(stage, defaultCompletedPatch(key, order, completionDate))
+      stage.startDate = stage.startDate || completionDate
+      stage.delayDays = 0
+      stage.delayState = 'completed'
+      stage.history = stage.history || []
+      stage.history.push({
+        id: uid('h'),
+        at: new Date().toISOString(),
+        user: 'System',
+        stage: key,
+        prevStatus,
+        newStatus: stage.status,
+        action: 'Auto-Corrected',
+        remarks: 'Backfilled automatically — this stage was left Pending while later stages were already completed (likely an earlier Admin override).',
+        fields: summarizeFields(defaultCompletedPatch(key, order, completionDate)),
+      })
+      order.history = order.history || []
+      order.history.push({
+        id: uid('h'),
+        at: new Date().toISOString(),
+        user: 'System',
+        stage: key,
+        prevStatus,
+        newStatus: stage.status,
+        action: 'Auto-Corrected',
+        remarks: 'Backfilled automatically to keep the stage sequence consistent.',
+        fields: [],
+      })
+    }
+  })
+  if (changed) writeRaw(state)
+  return changed
+}
+
 let STATE = readRaw()
 if (!STATE) {
   STATE = seedDatabase()
   writeRaw(STATE)
 } else {
   ensureMasterDefaults(STATE)
+  ensureStageSequenceConsistency(STATE)
 }
 
 export const dbEvents = new EventTarget()
@@ -405,6 +573,45 @@ export const Orders = {
       }
     }
 
+    // An override intentionally skips the check above — but left alone,
+    // that strands every earlier non-terminal stage at "Pending" forever
+    // while work moves on past them, which is exactly the inconsistent
+    // timeline ensureStageSequenceConsistency() has to repair on load.
+    // Backfill them right here instead, so the hole is never created.
+    if (override && idx > 0) {
+      for (let i = 0; i < idx; i++) {
+        const earlierKey = STAGE_KEYS[i]
+        const earlierStage = order.stages[earlierKey]
+        if (!earlierStage || TERMINAL_STATUSES.includes(earlierStage.status)) continue
+        const backfillDate = earlierStage.targetDate || todayISO()
+        const earlierPrevStatus = earlierStage.status
+        Object.assign(earlierStage, defaultCompletedPatch(earlierKey, order, backfillDate))
+        earlierStage.startDate = earlierStage.startDate || backfillDate
+        earlierStage.history.push({
+          id: uid('h'),
+          at: new Date().toISOString(),
+          user: user?.name || 'System',
+          stage: earlierKey,
+          prevStatus: earlierPrevStatus,
+          newStatus: earlierStage.status,
+          action: 'Auto-Completed (Override)',
+          remarks: `Backfilled automatically because "${stageKey}" was updated via override, skipping ahead of this stage.`,
+          fields: summarizeFields(defaultCompletedPatch(earlierKey, order, backfillDate)),
+        })
+        order.history.push({
+          id: uid('h'),
+          at: new Date().toISOString(),
+          user: user?.name || 'System',
+          stage: earlierKey,
+          prevStatus: earlierPrevStatus,
+          newStatus: earlierStage.status,
+          action: 'Auto-Completed (Override)',
+          remarks: `Backfilled automatically because "${stageKey}" was updated via override, skipping ahead of this stage.`,
+          fields: [],
+        })
+      }
+    }
+
     const stage = order.stages[stageKey]
     const prevStatus = stage.status
     Object.assign(stage, patch)
@@ -464,6 +671,14 @@ export const Orders = {
         orderNumber: order.orderNumber,
         severity: 'success',
       })
+      // Delivery is the real finish line — the workflow completes itself the
+      // moment it's Delivered, with no separate manual "Close Order" sign-off
+      // needed. (Final QC Approved + Packing Packed are already guaranteed by
+      // this point via the sequential stage gating above, so re-checking them
+      // here would be redundant.)
+      if (stageKey === 'delivery' && order.stages.closed.status !== 'Completed') {
+        applyOrderClosure(order, { remarks: 'Automatically completed on delivery.', user, auto: true })
+      }
     } else if (['Revision Required', 'Rework Required', 'QC Failed'].includes(stage.status)) {
       pushNotification({
         type: stage.status,
@@ -488,6 +703,10 @@ export const Orders = {
     return delay(structuredClone(order))
   },
 
+  // Kept for direct/back-compat use (e.g. seedOrders.js's demo data) — the
+  // UI no longer needs this, since updateStage above auto-completes the
+  // order the moment Delivery is Delivered. The gate check stays here for
+  // any caller that invokes this directly, out of band from that sequence.
   closeOrder: (orderId, { remarks }, user) => {
     const order = STATE.orders.find((o) => o.id === orderId)
     if (!order) return delay(null)
@@ -497,39 +716,47 @@ export const Orders = {
     if (!qcOk || !packOk || !deliveryOk) {
       return delay({ error: 'Order can only be closed after Final QC is Approved, Packing is Packed, and Delivery is Delivered.' })
     }
-    const stage = order.stages.closed
-    stage.status = 'Completed'
-    stage.completionDate = todayISO()
-    stage.closedBy = user?.name || 'System'
-    stage.remarks = remarks
-    stage.history.push({
-      id: uid('h'),
-      at: new Date().toISOString(),
-      user: user?.name || 'System',
-      stage: 'closed',
-      prevStatus: 'Pending',
-      newStatus: 'Completed',
-      action: 'Order Closed',
-      remarks,
-    })
-    order.currentStage = 'closed'
-    order.overallStatus = ORDER_OVERALL_STATUS.CLOSED
-    order.closedDate = todayISO()
-    order.closedBy = user?.name || 'System'
-    order.history.push({
-      id: uid('h'),
-      at: new Date().toISOString(),
-      user: user?.name || 'System',
-      stage: 'closed',
-      prevStatus: '-',
-      newStatus: 'Closed',
-      action: 'Order Closed',
-      remarks,
-    })
+    applyOrderClosure(order, { remarks, user })
     pushAudit({ user, entity: 'order', entityId: orderId, action: 'CLOSE_ORDER', details: remarks })
     persist()
     return delay(structuredClone(order))
   },
+}
+
+// Marks the terminal "Complete" stage done. Shared by updateStage's
+// auto-trigger (fires the instant Delivery is Delivered) and closeOrder
+// (kept for direct/back-compat callers) so both paths stay in sync.
+function applyOrderClosure(order, { remarks = '', user, auto = false } = {}) {
+  const stage = order.stages.closed
+  stage.status = 'Completed'
+  stage.completionDate = todayISO()
+  stage.closedBy = user?.name || 'System'
+  stage.remarks = remarks
+  const action = auto ? 'Order Completed (Auto)' : 'Order Completed'
+  stage.history.push({
+    id: uid('h'),
+    at: new Date().toISOString(),
+    user: user?.name || 'System',
+    stage: 'closed',
+    prevStatus: 'Pending',
+    newStatus: 'Completed',
+    action,
+    remarks,
+  })
+  order.currentStage = 'closed'
+  order.overallStatus = ORDER_OVERALL_STATUS.CLOSED
+  order.closedDate = todayISO()
+  order.closedBy = user?.name || 'System'
+  order.history.push({
+    id: uid('h'),
+    at: new Date().toISOString(),
+    user: user?.name || 'System',
+    stage: 'closed',
+    prevStatus: '-',
+    newStatus: 'Closed',
+    action,
+    remarks,
+  })
 }
 
 function recomputeOverallStatus(order) {

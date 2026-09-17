@@ -21,7 +21,11 @@ export const STAGES = [
   { key: 'finalQc', label: 'Final Jewellery Checking', dept: 'Quality Control', route: 'final-qc' },
   { key: 'packing', label: 'Packing', dept: 'Packing', route: 'packing' },
   { key: 'delivery', label: 'Delivery', dept: 'Delivery', route: 'delivery' },
-  { key: 'closed', label: 'Order Closed', dept: 'Management', route: 'closed' },
+  // Not a real production step -- auto-completed the moment Delivery is
+  // marked Delivered (see updateStage's "terminal" branch in db.js), so it
+  // reads as the workflow's finish line rather than a step someone has to
+  // action separately.
+  { key: 'closed', label: 'Complete', dept: 'Management', route: 'closed' },
 ]
 
 export const STAGE_KEYS = STAGES.map((s) => s.key)
@@ -126,6 +130,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
 // Dropdown master keys (all fed from the Masters module)
 // ---------------------------------------------------------------------------
 export const MASTER_TYPES = [
+  { key: 'karigar', label: 'Karigar', fields: ['name'] },
   { key: 'metalType', label: 'Metal Type', fields: ['name'] },
   { key: 'goldPurity', label: 'Gold Purity', fields: ['name'] },
   { key: 'goldColour', label: 'Gold Colour', fields: ['name'] },

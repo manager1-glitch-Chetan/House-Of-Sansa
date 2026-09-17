@@ -18,19 +18,6 @@ const SEED_USER = { name: 'System Setup', role: 'admin' }
 const QC_ITEMS = ['Size Check', 'Diamond Setting Check', 'Prong Check', 'Polishing', 'Finishing', 'Rhodium Check']
 const passChecklist = () => QC_ITEMS.map((item) => ({ item, result: 'Pass', remarks: '' }))
 
-const KARIGAR_NAMES = ['Ramesh Sahu', 'Suresh Verma', 'Mahesh Yadav', 'Dinesh Prajapati']
-// Completed Karigar Assign patch, backdated around `completionDay` (a negative
-// addDays offset) so seeded orders don't hit the sequential-stage lock that
-// now sits between Planning and CAD.
-const assignKarigar = (i, completionDay) => ({
-  status: 'Completed',
-  karigarName: KARIGAR_NAMES[i % KARIGAR_NAMES.length],
-  assignedPerson: KARIGAR_NAMES[i % KARIGAR_NAMES.length],
-  startDate: addDays(completionDay - 1),
-  targetDate: addDays(completionDay + 1),
-  completionDate: addDays(completionDay),
-})
-
 const GEMSTONE_SAMPLES = [
   { type: 'Ruby', shape: 'Round', size: '4mm', quality: 'AA', colour: 'Red', pcs: 4, weight: 1.2 },
   { type: 'Emerald', shape: 'Oval', size: '5mm', quality: 'AAA', colour: 'Green', pcs: 2, weight: 0.9 },
@@ -48,10 +35,25 @@ export async function seedDemoOrders() {
     Masters.listAll(),
   ])
   const person = (role) => employees.find((e) => e.role === role)?.name || ''
+  const karigarName = (i) => masters.karigar?.[i % masters.karigar.length]?.name || ''
 
   async function step(order, stageKey, patch, action) {
     await Orders.updateStage(order.id, stageKey, patch, { user: SEED_USER, action: action || 'Update' })
   }
+
+  // Completed Karigar Assign patch, backdated around `completionDay` (a
+  // negative addDays offset) so seeded orders don't hit the sequential-stage
+  // lock that now sits between Planning and CAD. Karigar names come from the
+  // Karigar master list (src/lib/constants.js's MASTER_TYPES), same as the
+  // real Karigar Assign stage form.
+  const assignKarigar = (i, completionDay) => ({
+    status: 'Completed',
+    karigarName: karigarName(i),
+    assignedPerson: karigarName(i),
+    startDate: addDays(completionDay - 1),
+    targetDate: addDays(completionDay + 1),
+    completionDate: addDays(completionDay),
+  })
 
   // Completed Gem Stone patch, backdated around `completionDay`, so seeded
   // orders don't hit the sequential-stage lock that now sits between

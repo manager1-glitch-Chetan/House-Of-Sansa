@@ -1,9 +1,9 @@
 import { useStageEditor } from './useStageEditor'
 import StageFrame from './StageFrame'
-import { Field, TextInput } from '@/components/common/Field'
+import { Field, TextInput, Select } from '@/components/common/Field'
 import { todayISO } from '@/lib/utils'
 
-export default function KarigarAssignTab({ order, onChanged, onCancel }) {
+export default function KarigarAssignTab({ order, masters, onChanged, onCancel }) {
   const ctx = useStageEditor(order, 'karigarAssign', onChanged)
   const { draft, setField, editMode, user } = ctx
   const disabled = !editMode
@@ -23,7 +23,13 @@ export default function KarigarAssignTab({ order, onChanged, onCancel }) {
     <StageFrame ctx={ctx} stageKey="karigarAssign" onCancel={onCancel} onSubmit={handleSubmit} hideAttachments>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Karigar Name">
-          <TextInput value={draft.karigarName || ''} onChange={(e) => setField('karigarName', e.target.value)} placeholder="Enter karigar's name" disabled={disabled} />
+          <Select
+            value={draft.karigarName || ''}
+            onChange={(e) => setField('karigarName', e.target.value)}
+            options={(masters?.karigar || []).map((k) => k.name)}
+            placeholder="Select karigar…"
+            disabled={disabled}
+          />
         </Field>
         <Field label="Delivery Date" hint="Date the piece is handed over to the karigar">
           <TextInput type="date" value={draft.startDate || ''} onChange={(e) => setField('startDate', e.target.value)} disabled={disabled} />
