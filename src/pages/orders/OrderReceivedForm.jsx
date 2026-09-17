@@ -23,7 +23,6 @@ export default function OrderReceivedForm() {
   const [shared, setSharedState] = useState({
     orderDate: todayISO(),
     customerName: '',
-    targetDeliveryDate: '',
     customerContact: '',
     salesPerson: '',
     orderType: '',
@@ -66,15 +65,15 @@ export default function OrderReceivedForm() {
   const validate = () => {
     const e = { lines: {} }
     if (!shared.customerName.trim()) e.customerName = 'Customer is required.'
-    if (!shared.targetDeliveryDate) e.targetDeliveryDate = 'Target date is required.'
     orderLines.forEach((line) => {
       const le = {}
       if (!line.productName.trim()) le.productName = 'Design / Item is required.'
       if (!line.quantity || Number(line.quantity) <= 0) le.quantity = 'Pcs must be at least 1.'
+      if (!line.targetDeliveryDate) le.targetDeliveryDate = 'Target date is required.'
       if (Object.keys(le).length) e.lines[line.id] = le
     })
     setErrors(e)
-    return !e.customerName && !e.targetDeliveryDate && Object.keys(e.lines).length === 0
+    return !e.customerName && Object.keys(e.lines).length === 0
   }
 
   const submit = async (e) => {
@@ -90,6 +89,7 @@ export default function OrderReceivedForm() {
           productCode: line.productCode,
           quantity: Number(line.quantity),
           size: line.size,
+          targetDeliveryDate: line.targetDeliveryDate,
           referenceImage: line.referenceImage,
           goldRemarks: line.goldRemarks,
           diamondRemarks: line.diamondRemarks,
@@ -124,7 +124,7 @@ export default function OrderReceivedForm() {
         subtitle="Order Number is generated automatically on save. Add multiple designs for the same customer below — duplicate a design to speed up similar entries."
       />
 
-      <form onSubmit={submit} className="space-y-5">
+      <form onSubmit={submit} className="space-y-4">
         <CommonDetailsCard
           shared={shared}
           setShared={setShared}

@@ -13,6 +13,7 @@ export function blankOrderLine() {
     productCode: '',
     quantity: 1,
     size: '',
+    targetDeliveryDate: '',
     metalType: '',
     goldPurity: '',
     goldColour: '',
