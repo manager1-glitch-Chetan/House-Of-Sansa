@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useStageEditor } from './useStageEditor'
 import StageFrame from './StageFrame'
 import { Field, TextInput, Select } from '@/components/common/Field'
@@ -7,8 +8,19 @@ export default function KarigarAssignTab({ order, masters, onChanged, onCancel }
   const ctx = useStageEditor(order, 'karigarAssign', onChanged)
   const { draft, setField, editMode, user } = ctx
   const disabled = !editMode
+  const [errors, setErrors] = useState({})
+
+  const validate = () => {
+    const e = {}
+    if (!draft.karigarName) e.karigarName = 'Karigar Name is required.'
+    if (!draft.startDate) e.startDate = 'Delivery Date is required.'
+    if (!draft.targetDate) e.targetDate = 'Expected Delivery Date is required.'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
 
   const handleSubmit = async () => {
+    if (!validate()) return { error: 'Please fill in all required fields before submitting.' }
     const res = await ctx.save('Submit', {
       status: 'Completed',
       assignedPerson: draft.karigarName || user?.name || draft.assignedPerson,
@@ -22,7 +34,7 @@ export default function KarigarAssignTab({ order, masters, onChanged, onCancel }
   return (
     <StageFrame ctx={ctx} stageKey="karigarAssign" onCancel={onCancel} onSubmit={handleSubmit} hideAttachments>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Karigar Name">
+        <Field label="Karigar Name" required error={errors.karigarName}>
           <Select
             value={draft.karigarName || ''}
             onChange={(e) => setField('karigarName', e.target.value)}
@@ -31,10 +43,10 @@ export default function KarigarAssignTab({ order, masters, onChanged, onCancel }
             disabled={disabled}
           />
         </Field>
-        <Field label="Delivery Date" hint="Date the piece is handed over to the karigar">
+        <Field label="Delivery Date" required error={errors.startDate} hint="Date the piece is handed over to the karigar">
           <TextInput type="date" value={draft.startDate || ''} onChange={(e) => setField('startDate', e.target.value)} disabled={disabled} />
         </Field>
-        <Field label="Expected Delivery Date" hint="Date the karigar is expected to deliver it back">
+        <Field label="Expected Delivery Date" required error={errors.targetDate} hint="Date the karigar is expected to deliver it back">
           <TextInput type="date" value={draft.targetDate || ''} onChange={(e) => setField('targetDate', e.target.value)} disabled={disabled} />
         </Field>
       </div>
