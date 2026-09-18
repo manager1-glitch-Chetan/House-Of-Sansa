@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import ErrorBoundary from './components/common/ErrorBoundary.jsx'
 import { Orders } from './lib/db'
 import { seedDemoOrders } from './lib/seedOrders'
 
@@ -17,7 +18,9 @@ async function bootstrap() {
   }
   root.render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>
   )
 }

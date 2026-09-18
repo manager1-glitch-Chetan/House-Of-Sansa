@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/utils'
 // applyOrderClosure/updateStage in db.js), so this page only ever reports
 // that outcome; it never asks anyone to do something to reach it.
 export default function ClosedTab({ order }) {
-  const isComplete = order.stages.closed.status === 'Completed'
+  const isComplete = order.stages.closed?.status === 'Completed'
 
   if (isComplete) {
     return (
@@ -19,7 +19,7 @@ export default function ClosedTab({ order }) {
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-hos-ink-500">Completion History</h4>
           <div className="card">
-            <HistoryTable entries={order.stages.closed.history} />
+            <HistoryTable entries={order.stages.closed?.history} />
           </div>
         </div>
       </div>

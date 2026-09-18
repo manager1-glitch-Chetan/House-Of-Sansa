@@ -35,7 +35,7 @@ export default function OrderFlowLayout() {
 
   const overallDelay = computeDelay({
     targetDate: order.targetDeliveryDate,
-    completionDate: order.stages.delivery.completionDate,
+    completionDate: order.stages.delivery?.completionDate,
     status: order.overallStatus,
     isTerminal: order.overallStatus === 'Delivered' || order.overallStatus === 'Closed',
   })

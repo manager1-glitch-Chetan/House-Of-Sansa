@@ -257,12 +257,36 @@ function ensureStageSequenceConsistency(state) {
   return changed
 }
 
+// Backfills any order whose `stages` map is missing a key entirely — e.g. an
+// order persisted before a new stage (like karigarAssign) was added to
+// STAGE_KEYS. Without this, every stage tab's shared editor hook would throw
+// trying to read `.status` off `undefined`. Runs before
+// ensureStageSequenceConsistency() so a freshly-backfilled blank record can
+// still be picked up by that function's existing hole-repair logic if a
+// later stage is already terminal. Idempotent: a no-op once every order's
+// stages map is complete.
+function ensureStageRecordsComplete(state) {
+  let changed = false
+  ;(state.orders || []).forEach((order) => {
+    if (!order.stages) order.stages = {}
+    STAGE_KEYS.forEach((key) => {
+      if (!order.stages[key]) {
+        order.stages[key] = blankStageRecord()
+        changed = true
+      }
+    })
+  })
+  if (changed) writeRaw(state)
+  return changed
+}
+
 let STATE = readRaw()
 if (!STATE) {
   STATE = seedDatabase()
   writeRaw(STATE)
 } else {
   ensureMasterDefaults(STATE)
+  ensureStageRecordsComplete(STATE)
   ensureStageSequenceConsistency(STATE)
 }
 
@@ -430,7 +454,7 @@ function nextOrderNumber() {
   return `HOS-${year}-${String(seq).padStart(4, '0')}`
 }
 
-function blankStageRecord(extra = {}) {
+export function blankStageRecord(extra = {}) {
   return {
     status: 'Pending',
     assignedPerson: '',
@@ -565,7 +589,7 @@ export const Orders = {
     if (idx > 0 && !override) {
       const prevKey = STAGE_KEYS[idx - 1]
       const prevStage = order.stages[prevKey]
-      const prevDone = TERMINAL_STATUSES.includes(prevStage.status)
+      const prevDone = TERMINAL_STATUSES.includes(prevStage?.status)
       if (!prevDone) {
         return delay({
           error: `Cannot update "${stageKey}" — previous stage "${prevKey}" is not completed yet. An Admin/Management override is required to bypass this.`,
@@ -612,7 +636,7 @@ export const Orders = {
       }
     }
 
-    const stage = order.stages[stageKey]
+    const stage = order.stages[stageKey] || (order.stages[stageKey] = blankStageRecord())
     const prevStatus = stage.status
     Object.assign(stage, patch)
     if (!stage.startDate && patch.status && patch.status !== 'Pending') {
@@ -661,7 +685,7 @@ export const Orders = {
       const nextIdx = idx + 1
       if (nextIdx < STAGE_KEYS.length) {
         order.currentStage = STAGE_KEYS[nextIdx]
-        const nextStage = order.stages[STAGE_KEYS[nextIdx]]
+        const nextStage = order.stages[STAGE_KEYS[nextIdx]] || (order.stages[STAGE_KEYS[nextIdx]] = blankStageRecord())
         if (!nextStage.startDate) nextStage.startDate = ''
       }
       pushNotification({
@@ -676,7 +700,7 @@ export const Orders = {
       // needed. (Final QC Approved + Packing Packed are already guaranteed by
       // this point via the sequential stage gating above, so re-checking them
       // here would be redundant.)
-      if (stageKey === 'delivery' && order.stages.closed.status !== 'Completed') {
+      if (stageKey === 'delivery' && order.stages.closed?.status !== 'Completed') {
         applyOrderClosure(order, { remarks: 'Automatically completed on delivery.', user, auto: true })
       }
     } else if (['Revision Required', 'Rework Required', 'QC Failed'].includes(stage.status)) {
@@ -698,6 +722,7 @@ export const Orders = {
     }
 
     recomputeOverallStatus(order)
+    order.updatedAt = new Date().toISOString()
     pushAudit({ user, entity: 'order', entityId: orderId, action: `STAGE_${stageKey}_${action}`.toUpperCase(), details: remarks })
     persist()
     return delay(structuredClone(order))
@@ -710,9 +735,9 @@ export const Orders = {
   closeOrder: (orderId, { remarks }, user) => {
     const order = STATE.orders.find((o) => o.id === orderId)
     if (!order) return delay(null)
-    const qcOk = order.stages.finalQc.status === 'Approved'
-    const packOk = order.stages.packing.status === 'Packed'
-    const deliveryOk = order.stages.delivery.status === 'Delivered'
+    const qcOk = order.stages.finalQc?.status === 'Approved'
+    const packOk = order.stages.packing?.status === 'Packed'
+    const deliveryOk = order.stages.delivery?.status === 'Delivered'
     if (!qcOk || !packOk || !deliveryOk) {
       return delay({ error: 'Order can only be closed after Final QC is Approved, Packing is Packed, and Delivery is Delivered.' })
     }
@@ -760,15 +785,15 @@ function applyOrderClosure(order, { remarks = '', user, auto = false } = {}) {
 }
 
 function recomputeOverallStatus(order) {
-  if (order.stages.closed.status === 'Completed') {
+  if (order.stages.closed?.status === 'Completed') {
     order.overallStatus = ORDER_OVERALL_STATUS.CLOSED
     return
   }
-  if (order.stages.delivery.status === 'Delivered') {
+  if (order.stages.delivery?.status === 'Delivered') {
     order.overallStatus = ORDER_OVERALL_STATUS.DELIVERED
     return
   }
-  if (order.stages.packing.status === 'Packed' || order.stages.finalQc.status === 'Approved') {
+  if (order.stages.packing?.status === 'Packed' || order.stages.finalQc?.status === 'Approved') {
     order.overallStatus = ORDER_OVERALL_STATUS.READY_FOR_DELIVERY
     return
   }

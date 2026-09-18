@@ -34,9 +34,9 @@ export default function MaterialReconciliationTab({ order }) {
     MaterialTransactions.list(order.id).then(setLedger)
   }, [order.id, order.updatedAt])
 
-  const casting = order.stages.casting
-  const packing = order.stages.packing
-  const diamondSetting = order.stages.diamondSetting
+  const casting = order.stages.casting || {}
+  const packing = order.stages.packing || {}
+  const diamondSetting = order.stages.diamondSetting || {}
 
   const goldEstimated = Number(order.gold?.estimatedWeight) || 0
   const goldActual = Number(casting.goldWeight) || 0
