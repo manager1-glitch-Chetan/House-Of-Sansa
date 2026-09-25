@@ -3,8 +3,8 @@ import { Field, TextArea } from '@/components/common/Field'
 import FileUpload from '@/components/common/FileUpload'
 import HistoryTable from '@/components/common/HistoryTable'
 import { StatusBadge, DelayBadge } from '@/components/common/Badge'
-import { computeDelay, DELAY_STATE_META, todayISO } from '@/lib/utils'
-import { stageLabel, TERMINAL_STATUSES } from '@/lib/constants'
+import { stageDelayFor, DELAY_STATE_META, formatDate, todayISO } from '@/lib/utils'
+import { stageLabel } from '@/lib/constants'
 
 /**
  * Common shell every stage form is built on. Per the simplified workflow:
@@ -15,10 +15,9 @@ import { stageLabel, TERMINAL_STATUSES } from '@/lib/constants'
  * the stage and hands it to the next one).
  */
 export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Completed', onCancel, onSubmit, hideRemarks = false, hideAttachments = false }) {
-  const { draft, setField, editMode, requestEdit, locked, isTerminal, saving, save, canOverride, record, user } = ctx
+  const { order, draft, setField, editMode, requestEdit, locked, isTerminal, saving, save, canOverride, record, user } = ctx
 
-  const terminal = TERMINAL_STATUSES.includes(record.status)
-  const delayInfo = computeDelay({ targetDate: record.targetDate, completionDate: record.completionDate, status: record.status, isTerminal: terminal })
+  const delayInfo = stageDelayFor(order, stageKey)
 
   const disabled = !editMode || saving
 
@@ -72,6 +71,10 @@ export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Co
         <DelayBadge state={delayInfo.state} days={delayInfo.delayDays} label={DELAY_STATE_META[delayInfo.state]?.label} />
         <span className="text-xs text-hos-ink-400">
           Assigned to <span className="font-semibold text-hos-ink-600">{record.assignedPerson || user?.name}</span>
+        </span>
+        <span className="text-xs text-hos-ink-400">
+          Order Date <span className="font-semibold text-hos-ink-600">{formatDate(order?.orderDate)}</span>
+          {' · '}Expected Delivery <span className="font-semibold text-hos-ink-600">{formatDate(order?.targetDeliveryDate)}</span>
         </span>
         {isTerminal && !editMode && (
           <button className="btn-outline btn-sm ml-auto" onClick={requestEdit}>

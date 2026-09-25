@@ -87,7 +87,7 @@ export default function EditOrderModal({ order, masters, customers, employees, p
     if (!form.customerName.trim()) e.customerName = 'Customer is required.'
     if (!form.productName.trim()) e.productName = 'Design / Item is required.'
     if (!form.quantity || Number(form.quantity) <= 0) e.quantity = 'Pcs must be at least 1.'
-    if (!form.targetDeliveryDate) e.targetDeliveryDate = 'Target date is required.'
+    if (!form.targetDeliveryDate) e.targetDeliveryDate = 'Expected delivery date is required.'
     if (Object.keys(e).length) {
       setErrors(e)
       return
@@ -171,7 +171,7 @@ export default function EditOrderModal({ order, masters, customers, employees, p
               <Field label="Priority">
                 <Select value={form.priority} onChange={(e) => update({ priority: e.target.value })} options={(masters.priority || []).map((m) => m.name)} />
               </Field>
-              <Field label="Target Date" required error={errors.targetDeliveryDate}>
+              <Field label="Expected Delivery Date" required error={errors.targetDeliveryDate}>
                 <TextInput type="date" value={form.targetDeliveryDate} onChange={(e) => update({ targetDeliveryDate: e.target.value })} />
               </Field>
               <Field label="Customer Ref #">

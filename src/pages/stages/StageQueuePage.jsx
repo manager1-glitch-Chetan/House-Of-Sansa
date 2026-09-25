@@ -3,15 +3,21 @@ import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { PlayCircle, ExternalLink } from 'lucide-react'
 import { Orders, Employees, Masters, dbEvents } from '@/lib/db'
 import { useAuth } from '@/context/AuthContext'
-import { STAGES, stageForRoute, routeForStage, TERMINAL_STATUSES } from '@/lib/constants'
-import { computeDelay, DELAY_STATE_META, formatDate, cx } from '@/lib/utils'
+import { STAGES, stageForRoute, routeForStage } from '@/lib/constants'
+import { stageDelayFor, delayText, orderDateFields, ORDER_DATE_COLUMNS, DELAY_STATE_META, formatDate, num, cx } from '@/lib/utils'
 import PageHeader from '@/components/common/PageHeader'
 import DataTable from '@/components/common/DataTable'
 import FilterBar from '@/components/common/FilterBar'
 import Modal from '@/components/common/Modal'
 import HistoryTable from '@/components/common/HistoryTable'
+import { ReferenceImagesButton, ReferenceImagesModal } from '@/components/common/ReferenceImages'
 import { StatusBadge, DelayBadge } from '@/components/common/Badge'
 import { STAGE_COMPONENTS } from '@/pages/orders/stageComponents'
+
+// Display value for an optional New Order field — blank shows as "—".
+const orDash = (v) => (v === '' || v == null ? '—' : v)
+// Weights/counts entered as 0 mean "not specified" on the New Order form.
+const numOrDash = (v) => (Number(v) > 0 ? num(v) : '—')
 
 function TabPill({ active, onClick, children }) {
   return (
@@ -47,6 +53,7 @@ export default function StageQueuePage() {
   const [masters, setMasters] = useState({})
   const [filters, setFilters] = useState({})
   const [activeOrderId, setActiveOrderId] = useState(null)
+  const [viewingImages, setViewingImages] = useState(null)
   const [tab, setTab] = useState('pending')
 
   const stageKey = stageForRoute(stageRoute)
@@ -69,7 +76,14 @@ export default function StageQueuePage() {
   const historyEntries = useMemo(
     () =>
       orders.flatMap((o) =>
-        (o.stages[stageKey]?.history || []).map((h) => ({ ...h, orderId: o.id, orderNumber: o.orderNumber, customerName: o.customerName }))
+        (o.stages[stageKey]?.history || []).map((h) => ({
+          ...h,
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          customerName: o.customerName,
+          orderDate: o.orderDate,
+          targetDeliveryDate: o.targetDeliveryDate,
+        }))
       ),
     [orders, stageKey]
   )
@@ -102,14 +116,35 @@ export default function StageQueuePage() {
 
   const rows = filtered.map((o) => {
     const rec = o.stages?.[stageKey] || {}
-    const terminal = TERMINAL_STATUSES.includes(rec.status)
-    const delayInfo = computeDelay({ targetDate: rec.targetDate, completionDate: rec.completionDate, status: rec.status, isTerminal: terminal })
+    const delayInfo = stageDelayFor(o, stageKey)
     return {
       ...o,
+      ...orderDateFields(o),
       stageStatus: rec.status,
       assignedPerson: rec.assignedPerson || '—',
-      targetDateFmt: formatDate(rec.targetDate),
+      stageTargetDate: rec.targetDate || '',
+      stageTargetFmt: formatDate(rec.targetDate),
       delayInfo,
+      delay: delayText(delayInfo),
+      // Everything else filled in on the New Order form.
+      salesPerson: orDash(o.salesPerson),
+      orderType: orDash(o.orderType),
+      customerContact: orDash(o.customerContact),
+      customerRefNumber: orDash(o.customerRefNumber),
+      customerRequirement: orDash(o.customerRequirement),
+      productCode: orDash(o.productCode),
+      size: orDash(o.size),
+      images: o.referenceImage?.length ? `${o.referenceImage.length} image${o.referenceImage.length > 1 ? 's' : ''}` : '—',
+      metalType: orDash(o.gold?.type),
+      metalPurity: orDash(o.gold?.purity),
+      metalColour: orDash(o.gold?.colour),
+      metalWeight: numOrDash(o.gold?.estimatedWeight),
+      metalWeightValue: Number(o.gold?.estimatedWeight) || '',
+      diamondPcs: numOrDash(o.diamond?.pcs),
+      diamondPcsValue: Number(o.diamond?.pcs) || '',
+      diamondWeight: numOrDash(o.diamond?.weight),
+      diamondWeightValue: Number(o.diamond?.weight) || '',
+      diamondParticular: orDash(o.diamond?.particular),
     }
   })
 
@@ -129,16 +164,47 @@ export default function StageQueuePage() {
     { key: 'customerName', label: 'Customer' },
     { key: 'productName', label: 'Article' },
     { key: 'quantity', label: 'Pcs' },
+    ...ORDER_DATE_COLUMNS,
     { key: 'priority', label: 'Priority', render: (r) => <StatusBadge status={r.priority} /> },
     { key: 'assignedPerson', label: 'Assigned To' },
     { key: 'stageStatus', label: 'Stage Status', render: (r) => <StatusBadge status={r.stageStatus} /> },
-    { key: 'targetDateFmt', label: 'Target Date' },
+    { key: 'stageTargetFmt', label: 'Stage Target', sortKey: 'stageTargetDate' },
     {
       key: 'delay',
       label: 'Delay',
       sortable: false,
       render: (r) => <DelayBadge state={r.delayInfo.state} days={r.delayInfo.delayDays} label={DELAY_STATE_META[r.delayInfo.state]?.label} />,
     },
+    // New Order form details, in the form's own order. All shown by
+    // default — each stage's team hides what it doesn't need via Columns.
+    { key: 'salesPerson', label: 'Sales Person' },
+    { key: 'orderType', label: 'Order Type' },
+    { key: 'customerContact', label: 'Customer Contact' },
+    { key: 'customerRefNumber', label: 'Customer Ref #' },
+    {
+      key: 'customerRequirement',
+      label: 'Customer Requirement',
+      render: (r) => (
+        <span className="block md:max-w-xs md:truncate" title={r.customerRequirement}>
+          {r.customerRequirement}
+        </span>
+      ),
+    },
+    { key: 'productCode', label: 'Product Code' },
+    { key: 'size', label: 'Size' },
+    {
+      key: 'images',
+      label: 'Reference Image',
+      sortable: false,
+      render: (r) => <ReferenceImagesButton images={r.referenceImage} onOpen={setViewingImages} />,
+    },
+    { key: 'metalType', label: 'Metal Type' },
+    { key: 'metalPurity', label: 'Metal Purity' },
+    { key: 'metalColour', label: 'Metal Colour' },
+    { key: 'metalWeight', label: 'Metal Weight (g)', sortKey: 'metalWeightValue' },
+    { key: 'diamondPcs', label: 'Diamond Pcs', sortKey: 'diamondPcsValue' },
+    { key: 'diamondWeight', label: 'Diamond Weight (ct)', sortKey: 'diamondWeightValue' },
+    { key: 'diamondParticular', label: 'Diamond Particular' },
   ]
 
   return (
@@ -167,6 +233,10 @@ export default function StageQueuePage() {
             onClear={() => setFilters({})}
           />
           <DataTable
+            // Same component for every stage: remount per stage so each loads
+            // its own saved column choice (and starts with a clean search).
+            key={stageKey}
+            columnsKey={`stage-queue:${stageKey}`}
             columns={columns}
             rows={rows}
             exportTitle={`${stageMeta.label} Queue`}
@@ -179,6 +249,8 @@ export default function StageQueuePage() {
           <HistoryTable entries={historyEntries} showOrder />
         </div>
       )}
+
+      <ReferenceImagesModal images={viewingImages} onClose={() => setViewingImages(null)} />
 
       <Modal
         open={!!activeOrder}

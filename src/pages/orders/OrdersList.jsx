@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Trash2, ImageIcon } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { Orders, Customers, Employees, Products, Masters, dbEvents } from '@/lib/db'
 import { applyFilters } from '@/lib/analytics'
 import PageHeader from '@/components/common/PageHeader'
 import FilterBar from '@/components/common/FilterBar'
 import DataTable from '@/components/common/DataTable'
-import Modal from '@/components/common/Modal'
+import { ReferenceImagesButton, ReferenceImagesModal } from '@/components/common/ReferenceImages'
 import { useConfirm } from '@/components/common/ConfirmDialog'
 import { StatusBadge } from '@/components/common/Badge'
-import { stageLabel, TERMINAL_STATUSES } from '@/lib/constants'
-import { formatDate, computeDelay } from '@/lib/utils'
+import { stageLabel } from '@/lib/constants'
+import { stageDelayFor, delayText, orderDateFields, ORDER_DATE_COLUMNS, DELAY_STATE_META } from '@/lib/utils'
 import { DelayBadge } from '@/components/common/Badge'
-import { DELAY_STATE_META } from '@/lib/utils'
 import EditOrderModal from './EditOrderModal'
 
 export default function OrdersList() {
@@ -68,15 +67,13 @@ export default function OrdersList() {
   ]
 
   const rows = filtered.map((o) => {
-    const stageRec = o.stages?.[o.currentStage] || {}
-    const terminal = TERMINAL_STATUSES.includes(stageRec.status)
-    const delayInfo = computeDelay({ targetDate: stageRec.targetDate, completionDate: stageRec.completionDate, status: stageRec.status, isTerminal: terminal })
+    const delayInfo = stageDelayFor(o, o.currentStage)
     return {
       ...o,
+      ...orderDateFields(o),
       currentStageLabel: stageLabel(o.currentStage),
       delayInfo,
-      orderDateFmt: formatDate(o.orderDate),
-      targetDeliveryDateFmt: formatDate(o.targetDeliveryDate),
+      delay: delayText(delayInfo),
     }
   })
 
@@ -117,8 +114,7 @@ export default function OrdersList() {
     { key: 'priority', label: 'Priority', render: (r) => <StatusBadge status={r.priority} /> },
     { key: 'currentStageLabel', label: 'Current Stage' },
     { key: 'overallStatus', label: 'Status', render: (r) => <StatusBadge status={r.overallStatus} /> },
-    { key: 'orderDateFmt', label: 'Order Date' },
-    { key: 'targetDeliveryDateFmt', label: 'Target Delivery' },
+    ...ORDER_DATE_COLUMNS,
     {
       key: 'delay',
       label: 'Delay',
@@ -130,20 +126,7 @@ export default function OrdersList() {
       key: 'images',
       label: 'Images',
       sortable: false,
-      render: (r) =>
-        r.referenceImage?.length ? (
-          <button
-            className="inline-flex items-center gap-1 rounded-lg border border-hos-ink-200 px-2 py-1 text-xs font-medium text-hos-ink-600 hover:bg-hos-gold-50"
-            onClick={(e) => {
-              e.stopPropagation()
-              setViewingImages(r.referenceImage)
-            }}
-          >
-            <ImageIcon size={13} /> {r.referenceImage.length}
-          </button>
-        ) : (
-          <span className="text-xs text-hos-ink-300">—</span>
-        ),
+      render: (r) => <ReferenceImagesButton images={r.referenceImage} onOpen={setViewingImages} />,
     },
   ]
 
@@ -177,19 +160,7 @@ export default function OrdersList() {
         onClose={() => setEditingOrder(null)}
       />
 
-      <Modal open={!!viewingImages} onClose={() => setViewingImages(null)} title="Reference Images" size="lg">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {viewingImages?.map((att) => (
-            <a key={att.id} href={att.dataUrl} download={att.name} className="block overflow-hidden rounded-lg border border-hos-ink-200 hover:border-hos-gold-400">
-              {att.type?.startsWith('image/') ? (
-                <img src={att.dataUrl} alt={att.name} className="h-32 w-full object-cover" />
-              ) : (
-                <div className="flex h-32 w-full items-center justify-center bg-hos-ink-50 text-xs text-hos-ink-500">{att.name}</div>
-              )}
-            </a>
-          ))}
-        </div>
-      </Modal>
+      <ReferenceImagesModal images={viewingImages} onClose={() => setViewingImages(null)} />
     </div>
   )
 }

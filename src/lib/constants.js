@@ -169,3 +169,5 @@ export const GEMSTONE_TOLERANCE_PCS = 0
 
 export const CURRENT_USER_KEY = 'hos_session_v1'
 export const DB_KEY = 'hos_erp_db_v1'
+// Per-table hidden-column choices (DataTable `columnsKey`), stored per browser.
+export const TABLE_COLUMNS_KEY_PREFIX = 'hos_table_cols_v1:'

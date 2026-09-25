@@ -129,6 +129,69 @@ export const DELAY_STATE_META = {
 }
 
 // ---------------------------------------------------------------------------
+// Diamond Setting rule: more diamonds can't come back than were issued.
+// Shared by the form (inline errors) and Orders.updateStage (hard stop), so
+// both enforce exactly the same limit. Returns { returnedPcs?, returnedWeight? }.
+// ---------------------------------------------------------------------------
+export function diamondReturnErrors(rec) {
+  const errors = {}
+  const issuedPcs = Number(rec?.issuedPcs) || 0
+  const issuedWeight = Number(rec?.issuedWeight) || 0
+  const returnedPcs = Number(rec?.returnedPcs) || 0
+  const returnedWeight = Number(rec?.returnedWeight) || 0
+  if (returnedPcs > issuedPcs) {
+    errors.returnedPcs = `Returned PCS (${returnedPcs}) cannot be more than Issued PCS (${issuedPcs}).`
+  }
+  // Small tolerance so 0.1 + 0.2 style float sums don't trip the check.
+  if (returnedWeight > issuedWeight + 1e-9) {
+    errors.returnedWeight = `Returned Weight (${returnedWeight} ct) cannot be more than Issued Weight (${issuedWeight} ct).`
+  }
+  return errors
+}
+
+/**
+ * Delay for an order at one stage. Most stages never get their own target
+ * date (only Karigar Assign sets one), so fall back to the order's Expected
+ * Delivery Date — otherwise every queue would just read "Not Started".
+ */
+export function stageDelayFor(order, stageKey) {
+  const rec = order?.stages?.[stageKey] || {}
+  return computeDelay({
+    targetDate: rec.targetDate || order?.targetDeliveryDate,
+    completionDate: rec.completionDate,
+    status: rec.status,
+    isTerminal: TERMINAL_STATUSES.includes(rec.status),
+  })
+}
+
+// Plain-text delay ("Delayed (3d)") for exports/search, which read raw
+// row values rather than the rendered <DelayBadge>.
+export function delayText(info) {
+  const label = DELAY_STATE_META[info?.state]?.label || '—'
+  return info?.delayDays > 0 ? `${label} (${info.delayDays}d)` : label
+}
+
+// ---------------------------------------------------------------------------
+// Order date columns — shared by every order table (stage queues, order
+// list, reports) so Order Date / Expected Delivery read the same everywhere.
+// Raw ISO dates ride along as sort keys: formatted strings sort
+// alphabetically ("01 Oct" before "25 Sep"), ISO strings sort by date.
+// ---------------------------------------------------------------------------
+export function orderDateFields(o) {
+  return {
+    orderDate: o.orderDate || '',
+    orderDateFmt: formatDate(o.orderDate),
+    targetDeliveryDate: o.targetDeliveryDate || '',
+    targetDeliveryDateFmt: formatDate(o.targetDeliveryDate),
+  }
+}
+
+export const ORDER_DATE_COLUMNS = [
+  { key: 'orderDateFmt', label: 'Order Date', sortKey: 'orderDate' },
+  { key: 'targetDeliveryDateFmt', label: 'Expected Delivery', sortKey: 'targetDeliveryDate' },
+]
+
+// ---------------------------------------------------------------------------
 // File helpers — files are stored as data URLs in the local data layer so
 // attachments survive reloads without needing a real object storage backend.
 // ---------------------------------------------------------------------------

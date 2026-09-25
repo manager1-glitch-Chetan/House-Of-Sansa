@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react'
 const ConfirmContext = createContext(null)
 
 export function ConfirmProvider({ children }) {
-  const [state, setState] = useState(null) // { message, title, resolve, requireReason }
+  const [state, setState] = useState(null) // { message, title, resolve, requireReason, reasonPlaceholder }
   const [reason, setReason] = useState('')
 
   const confirm = useCallback((opts) => {
@@ -59,7 +59,7 @@ export function ConfirmProvider({ children }) {
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Explain why this change is being made after completion…"
+              placeholder={state?.reasonPlaceholder || 'Explain why this change is being made after completion…'}
               autoFocus
             />
           </div>

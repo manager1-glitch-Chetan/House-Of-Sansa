@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { DB_KEY, STAGES, STAGE_KEYS, stageIndex, MASTER_TYPES, ORDER_OVERALL_STATUS, TERMINAL_STATUSES } from './constants'
-import { uid, todayISO, computeDelay, summarizeFields } from './utils'
+import { uid, todayISO, computeDelay, summarizeFields, diamondReturnErrors } from './utils'
 
 const LATENCY = 120 // ms — simulated network latency, keeps async UX honest
 let fastMode = false // bypassed during first-run demo-data seeding only
@@ -162,10 +162,7 @@ function defaultCompletedPatch(stageKey, order, completionDate) {
       return {
         status: 'Completed',
         assignedPerson: personByRole('diamond_setter'),
-        shape: 'Round',
-        size: '2.0mm',
-        quality: 'VS1',
-        colour: 'F',
+        diamondIssues: [{ id: uid('di'), shape: 'Round', size: '2.0mm', quality: 'VS1', colour: 'F', pcs: d.pcs || 0, weight: d.weight || 0, beforeSettingImage: [] }],
         issuedPcs: d.pcs || 0,
         issuedWeight: d.weight || 0,
         usedPcs: d.pcs || 0,
@@ -520,7 +517,7 @@ export const Orders = {
       { label: 'Diamond Pcs', value: data.diamond?.pcs },
       { label: 'Diamond Weight', value: data.diamond?.weight },
       { label: 'Diamond Particular', value: data.diamond?.particular },
-      { label: 'Target Date', value: data.targetDeliveryDate },
+      { label: 'Expected Delivery Date', value: data.targetDeliveryDate },
     ].filter((f) => f.value !== '' && f.value != null)
 
     const order = {
@@ -594,6 +591,23 @@ export const Orders = {
         return delay({
           error: `Cannot update "${stageKey}" — previous stage "${prevKey}" is not completed yet. An Admin/Management override is required to bypass this.`,
         })
+      }
+    }
+
+    // Checked here too (not just in the form) so no save path can record
+    // more diamonds returned than were issued. Nothing has been written yet.
+    if (stageKey === 'diamondSetting') {
+      const returnError = Object.values(diamondReturnErrors({ ...order.stages[stageKey], ...patch }))[0]
+      if (returnError) return delay({ error: returnError })
+    }
+
+    // Casting in a different gold purity than the order was booked in needs
+    // a reason on record (the Casting form asks for it in a popup).
+    if (stageKey === 'casting') {
+      const next = { ...order.stages[stageKey], ...patch }
+      const orderPurity = order.gold?.purity
+      if (orderPurity && next.goldPurity && next.goldPurity !== orderPurity && !String(next.purityChangeReason || '').trim()) {
+        return delay({ error: `Casting purity (${next.goldPurity}) is different from the order's purity (${orderPurity}). A reason for the change is required.` })
       }
     }
 

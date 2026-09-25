@@ -41,6 +41,10 @@ export function useStageEditor(order, stageKey, onChanged) {
   const isTerminal = TERMINAL.includes(record.status)
 
   const setField = (key, value) => setDraft((d) => ({ ...d, [key]: value }))
+  // For changes derived from the current draft (e.g. editing one row of a
+  // list) — reads the latest draft, so async handlers like file uploads
+  // don't overwrite edits made while they were running.
+  const patchDraft = (fn) => setDraft((d) => ({ ...d, ...fn(d) }))
 
   const requestEdit = async () => {
     const reason = await confirm({
@@ -103,9 +107,11 @@ export function useStageEditor(order, stageKey, onChanged) {
   )
 
   return {
+    order,
     record,
     draft,
     setField,
+    patchDraft,
     editMode,
     requestEdit,
     locked,

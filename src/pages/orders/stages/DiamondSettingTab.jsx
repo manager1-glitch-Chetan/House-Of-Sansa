@@ -1,17 +1,81 @@
 import { useEffect } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { useStageEditor } from './useStageEditor'
 import StageFrame from './StageFrame'
 import { Field, TextInput, Select, TextArea } from '@/components/common/Field'
 import FileUpload from '@/components/common/FileUpload'
-import { todayISO } from '@/lib/utils'
+import { uid, todayISO, diamondReturnErrors } from '@/lib/utils'
 import { logMaterialTransaction } from '@/lib/db'
 
 const n = (v) => Number(v) || 0
 
+// ---------------------------------------------------------------------------
+// Diamond Issue rows — one per diamond type issued for setting (e.g. Round
+// 2.0mm + Pear 1.5mm on the same piece). Saved as `diamondIssues`, with the
+// flat `issuedPcs` / `issuedWeight` kept as their totals so reconciliation,
+// reports and Final QC keep reading the same fields.
+// ---------------------------------------------------------------------------
+function blankIssueRow() {
+  return { id: uid('di'), shape: '', size: '', quality: '', colour: '', pcs: '', weight: '', beforeSettingImage: [] }
+}
+
+const EMPTY_ISSUE_ROW = { ...blankIssueRow(), id: 'di_empty' }
+
+const hasIssueValue = (row) => row.shape || row.size || row.quality || row.colour || row.pcs || row.weight || row.beforeSettingImage?.length
+
+// Records saved before multiple rows existed keep one diamond in flat
+// fields — surface that as row 1 so nothing entered earlier is lost.
+function issueRowsFrom(record) {
+  if (record.diamondIssues?.length) return record.diamondIssues
+  const legacy = {
+    id: 'di_legacy',
+    shape: record.shape || '',
+    size: record.size || '',
+    quality: record.quality || '',
+    colour: record.colour || '',
+    pcs: record.issuedPcs || '',
+    weight: record.issuedWeight || '',
+    beforeSettingImage: record.beforeSettingImage || [],
+  }
+  return hasIssueValue(legacy) ? [legacy] : []
+}
+
+function issueTotals(rows) {
+  return {
+    pcs: rows.reduce((sum, r) => sum + n(r.pcs), 0),
+    weight: Math.round(rows.reduce((sum, r) => sum + n(r.weight), 0) * 1000) / 1000,
+  }
+}
+
+const describeIssue = (row) => [row.shape, row.size, row.quality, row.colour].filter(Boolean).join(' ')
+
 export default function DiamondSettingTab({ order, masters, onChanged, onCancel }) {
   const ctx = useStageEditor(order, 'diamondSetting', onChanged)
-  const { draft, setField, editMode, save, user } = ctx
+  const { draft, setField, patchDraft, editMode, save, user } = ctx
   const disabled = !editMode
+
+  const rowsOrEmpty = (record) => {
+    const rows = issueRowsFrom(record)
+    return rows.length ? rows : [EMPTY_ISSUE_ROW]
+  }
+  const issues = rowsOrEmpty(draft)
+  const issuedTotals = issueTotals(issues)
+  // Shown live under Returned PCS / Weight; the same check blocks saving.
+  const returnErrors = editMode ? diamondReturnErrors({ ...draft, issuedPcs: issuedTotals.pcs, issuedWeight: issuedTotals.weight }) : {}
+
+  // Every row change goes through the latest draft (a Before Setting Image
+  // upload finishes asynchronously), and moves the totals with the rows so
+  // the generic "In Progress" save (StageFrame) stores correct issuedPcs /
+  // issuedWeight too, not just Submit.
+  const changeIssues = (fn) =>
+    patchDraft((d) => {
+      const rows = fn(rowsOrEmpty(d))
+      const totals = issueTotals(rows)
+      return { diamondIssues: rows, issuedPcs: totals.pcs, issuedWeight: totals.weight }
+    })
+  const updateIssue = (rowId, key, value) => changeIssues((rows) => rows.map((r) => (r.id === rowId ? { ...r, [key]: value } : r)))
+  const addIssue = () => changeIssues((rows) => [...rows, blankIssueRow()])
+  const removeIssue = (rowId) => changeIssues((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== rowId) : rows))
 
   // The Gem Stone stage (right after CAM/RPT) records what this design
   // needs before casting — pull that requirement in as the starting point
@@ -22,8 +86,10 @@ export default function DiamondSettingTab({ order, masters, onChanged, onCancel 
 
   useEffect(() => {
     if (!editMode) return
-    if (!draft.issuedPcs && order.diamond?.pcs) setField('issuedPcs', order.diamond.pcs)
-    if (!draft.issuedWeight && order.diamond?.weight) setField('issuedWeight', order.diamond.weight)
+    // First diamond row starts from what was planned on the New Order form.
+    if (!draft.diamondIssues?.length) {
+      changeIssues((rows) => (rows[0] === EMPTY_ISSUE_ROW ? [{ ...blankIssueRow(), pcs: order.diamond?.pcs || '', weight: order.diamond?.weight || '' }] : rows))
+    }
     if (!draft.gemstoneIssuedPcs && gemRequiredPcs) setField('gemstoneIssuedPcs', gemRequiredPcs)
     if (!draft.gemstoneIssuedWeight && gemRequiredWeight) setField('gemstoneIssuedWeight', gemRequiredWeight)
     if (gemRequirement.length === 1) {
@@ -38,15 +104,30 @@ export default function DiamondSettingTab({ order, masters, onChanged, onCancel 
   }, [editMode])
 
   const handleSubmit = async () => {
+    const issueRows = issues.filter(hasIssueValue)
+    const totals = issueTotals(issueRows)
+    const returnError = Object.values(diamondReturnErrors({ ...draft, issuedPcs: totals.pcs, issuedWeight: totals.weight }))[0]
+    if (returnError) {
+      alert(returnError)
+      return { error: returnError }
+    }
     const res = await save('Submit', {
       status: 'Completed',
       assignedPerson: user?.name || draft.assignedPerson,
       startDate: draft.startDate || todayISO(),
       completionDate: todayISO(),
+      diamondIssues: issueRows,
+      issuedPcs: totals.pcs,
+      issuedWeight: totals.weight,
     })
     if (res?.ok) {
       const stamp = { orderId: order.id, orderNumber: order.orderNumber, stage: 'diamondSetting', user }
-      if (n(draft.issuedPcs) || n(draft.issuedWeight)) logMaterialTransaction({ ...stamp, material: 'diamond', type: 'Issued', qty: n(draft.issuedPcs), weight: n(draft.issuedWeight), remarks: draft.issueRemarks })
+      // One ledger line per diamond type, so the ledger shows what was issued.
+      issueRows.forEach((row) => {
+        if (n(row.pcs) || n(row.weight)) {
+          logMaterialTransaction({ ...stamp, material: 'diamond', type: 'Issued', qty: n(row.pcs), weight: n(row.weight), remarks: [describeIssue(row), draft.issueRemarks].filter(Boolean).join(' — ') })
+        }
+      })
       if (n(draft.usedPcs) || n(draft.usedWeight)) logMaterialTransaction({ ...stamp, material: 'diamond', type: 'Consumed', qty: n(draft.usedPcs), weight: n(draft.usedWeight), remarks: draft.consumptionRemarks })
       if (n(draft.returnedPcs) || n(draft.returnedWeight)) logMaterialTransaction({ ...stamp, material: 'diamond', type: 'Returned', qty: n(draft.returnedPcs), weight: n(draft.returnedWeight) })
       if (n(draft.brokenLostPcs) || n(draft.brokenLostWeight)) logMaterialTransaction({ ...stamp, material: 'diamond', type: 'Broken/Lost', qty: n(draft.brokenLostPcs), weight: n(draft.brokenLostWeight) })
@@ -63,28 +144,54 @@ export default function DiamondSettingTab({ order, masters, onChanged, onCancel 
     <StageFrame ctx={ctx} stageKey="diamondSetting" onCancel={onCancel} onSubmit={handleSubmit} hideRemarks>
       <div className="space-y-5">
         <div>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-hos-ink-500">Diamond Issue</h4>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            <Field label="Shape">
-              <Select value={draft.shape || ''} onChange={(e) => setField('shape', e.target.value)} options={(masters.diamondShape || []).map((m) => m.name)} disabled={disabled} />
-            </Field>
-            <Field label="Size">
-              <Select value={draft.size || ''} onChange={(e) => setField('size', e.target.value)} options={(masters.diamondSize || []).map((m) => m.name)} disabled={disabled} />
-            </Field>
-            <Field label="Quality">
-              <Select value={draft.quality || ''} onChange={(e) => setField('quality', e.target.value)} options={(masters.diamondQuality || []).map((m) => m.name)} disabled={disabled} />
-            </Field>
-            <Field label="Colour">
-              <Select value={draft.colour || ''} onChange={(e) => setField('colour', e.target.value)} options={(masters.diamondColour || []).map((m) => m.name)} disabled={disabled} />
-            </Field>
-            <Field label="Issued PCs">
-              <TextInput type="number" value={draft.issuedPcs || ''} onChange={(e) => setField('issuedPcs', e.target.value)} disabled={disabled} />
-            </Field>
-            <Field label="Issued Weight (CT)">
-              <TextInput type="number" step="0.01" value={draft.issuedWeight || ''} onChange={(e) => setField('issuedWeight', e.target.value)} disabled={disabled} />
-            </Field>
-            <FileUpload label="Before Setting Image" value={draft.beforeSettingImage || []} onChange={(v) => setField('beforeSettingImage', v)} disabled={disabled} multiple={false} />
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-hos-ink-500">Diamond Issue</h4>
+            {!disabled && (
+              <button type="button" onClick={addIssue} className="btn-outline btn-sm inline-flex items-center gap-1">
+                <Plus size={13} /> Add Diamond
+              </button>
+            )}
           </div>
+          <div className="space-y-3">
+            {issues.map((row, idx) => (
+              <div key={row.id} className="rounded-lg border border-hos-ink-100 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-hos-ink-600">Diamond {idx + 1}</span>
+                  {!disabled && issues.length > 1 && (
+                    <button type="button" onClick={() => removeIssue(row.id)} title="Remove this diamond" className="shrink-0 rounded p-1.5 text-hos-ink-400 hover:bg-red-50 hover:text-red-600">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                  <Field label="Shape">
+                    <Select value={row.shape || ''} onChange={(e) => updateIssue(row.id, 'shape', e.target.value)} options={(masters.diamondShape || []).map((m) => m.name)} disabled={disabled} />
+                  </Field>
+                  <Field label="Size">
+                    <Select value={row.size || ''} onChange={(e) => updateIssue(row.id, 'size', e.target.value)} options={(masters.diamondSize || []).map((m) => m.name)} disabled={disabled} />
+                  </Field>
+                  <Field label="Quality">
+                    <Select value={row.quality || ''} onChange={(e) => updateIssue(row.id, 'quality', e.target.value)} options={(masters.diamondQuality || []).map((m) => m.name)} disabled={disabled} />
+                  </Field>
+                  <Field label="Colour">
+                    <Select value={row.colour || ''} onChange={(e) => updateIssue(row.id, 'colour', e.target.value)} options={(masters.diamondColour || []).map((m) => m.name)} disabled={disabled} />
+                  </Field>
+                  <Field label="Issued PCs">
+                    <TextInput type="number" min={0} value={row.pcs || ''} onChange={(e) => updateIssue(row.id, 'pcs', e.target.value)} disabled={disabled} />
+                  </Field>
+                  <Field label="Issued Weight (CT)">
+                    <TextInput type="number" step="0.01" min={0} value={row.weight || ''} onChange={(e) => updateIssue(row.id, 'weight', e.target.value)} disabled={disabled} />
+                  </Field>
+                  <FileUpload label="Before Setting Image" value={row.beforeSettingImage || []} onChange={(v) => updateIssue(row.id, 'beforeSettingImage', v)} disabled={disabled} multiple={false} />
+                </div>
+              </div>
+            ))}
+          </div>
+          {issues.length > 1 && (
+            <p className="mt-2 text-sm text-hos-ink-600">
+              Total issued: <span className="font-semibold text-hos-ink-900">{issuedTotals.pcs} pcs · {issuedTotals.weight} ct</span>
+            </p>
+          )}
           <Field label="Remarks" className="mt-3">
             <TextArea rows={2} value={draft.issueRemarks || ''} onChange={(e) => setField('issueRemarks', e.target.value)} disabled={disabled} />
           </Field>
@@ -99,11 +206,11 @@ export default function DiamondSettingTab({ order, masters, onChanged, onCancel 
             <Field label="Used Weight (CT)">
               <TextInput type="number" step="0.01" value={draft.usedWeight || ''} onChange={(e) => setField('usedWeight', e.target.value)} disabled={disabled} />
             </Field>
-            <Field label="Returned PCS">
-              <TextInput type="number" value={draft.returnedPcs || ''} onChange={(e) => setField('returnedPcs', e.target.value)} disabled={disabled} />
+            <Field label="Returned PCS" error={returnErrors.returnedPcs} hint={editMode ? `Max ${issuedTotals.pcs} (issued)` : undefined}>
+              <TextInput type="number" min={0} max={issuedTotals.pcs} value={draft.returnedPcs || ''} onChange={(e) => setField('returnedPcs', e.target.value)} disabled={disabled} />
             </Field>
-            <Field label="Returned Weight (CT)">
-              <TextInput type="number" step="0.01" value={draft.returnedWeight || ''} onChange={(e) => setField('returnedWeight', e.target.value)} disabled={disabled} />
+            <Field label="Returned Weight (CT)" error={returnErrors.returnedWeight} hint={editMode ? `Max ${issuedTotals.weight} ct (issued)` : undefined}>
+              <TextInput type="number" step="0.01" min={0} max={issuedTotals.weight} value={draft.returnedWeight || ''} onChange={(e) => setField('returnedWeight', e.target.value)} disabled={disabled} />
             </Field>
             <Field label="Broken / Lost PCS">
               <TextInput type="number" value={draft.brokenLostPcs || ''} onChange={(e) => setField('brokenLostPcs', e.target.value)} disabled={disabled} />

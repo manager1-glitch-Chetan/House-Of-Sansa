@@ -86,7 +86,7 @@ export default function DesignLineCard({
               <Field label="Size">
                 <TextInput value={line.size} onChange={(e) => onUpdate({ size: e.target.value })} placeholder="e.g. 14, US 7, 2.5&quot;" />
               </Field>
-              <Field label="Target Date" required error={errors.targetDeliveryDate}>
+              <Field label="Expected Delivery Date" required error={errors.targetDeliveryDate}>
                 <TextInput type="date" value={line.targetDeliveryDate} onChange={(e) => onUpdate({ targetDeliveryDate: e.target.value })} />
               </Field>
             </div>

@@ -22,7 +22,7 @@ export default function OverviewTab({ order }) {
           <Row label="Design / Item" value={order.productName} />
           <Row label="Pcs" value={order.quantity} />
           <Row label="Size" value={order.size} />
-          <Row label="Target Date" value={formatDate(order.targetDeliveryDate)} />
+          <Row label="Expected Delivery" value={formatDate(order.targetDeliveryDate)} />
         </div>
       </div>
 

@@ -1,7 +1,18 @@
 import { Link } from 'react-router-dom'
 import { History } from 'lucide-react'
-import { formatDateTime } from '@/lib/utils'
+import { formatDate, formatDateTime } from '@/lib/utils'
 import { stageLabel, routeForStage } from '@/lib/constants'
+
+// "Ordered 12 Sep 2026 · Due 30 Sep 2026" — shown under the order in
+// cross-order views (stage queue History) where there's no order header.
+function OrderDates({ entry }) {
+  if (!entry.orderDate && !entry.targetDeliveryDate) return null
+  return (
+    <div className="text-xs text-hos-ink-400">
+      Ordered {formatDate(entry.orderDate)} · Due {formatDate(entry.targetDeliveryDate)}
+    </div>
+  )
+}
 
 export default function HistoryTable({ entries = [], showStage = false, showOrder = false }) {
   if (!entries.length) {
@@ -40,6 +51,7 @@ export default function HistoryTable({ entries = [], showStage = false, showOrde
                       h.orderNumber
                     )}
                     {h.customerName && <div className="text-xs text-hos-ink-400">{h.customerName}</div>}
+                    <OrderDates entry={h} />
                   </td>
                 )}
                 {showStage && <td className="whitespace-nowrap px-3 py-2.5">{stageLabel(h.stage)}</td>}
@@ -86,6 +98,7 @@ export default function HistoryTable({ entries = [], showStage = false, showOrde
               )}
             </div>
             {showOrder && h.customerName && <div className="mt-0.5 text-xs text-hos-ink-400">{h.customerName}</div>}
+            {showOrder && <OrderDates entry={h} />}
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-semibold text-hos-ink-900">{h.user}</span>
               {showStage && <span className="rounded-full bg-hos-ink-100 px-2 py-0.5 text-xs font-medium text-hos-ink-600">{stageLabel(h.stage)}</span>}

@@ -69,7 +69,7 @@ export default function OrderReceivedForm() {
       const le = {}
       if (!line.productName.trim()) le.productName = 'Design / Item is required.'
       if (!line.quantity || Number(line.quantity) <= 0) le.quantity = 'Pcs must be at least 1.'
-      if (!line.targetDeliveryDate) le.targetDeliveryDate = 'Target date is required.'
+      if (!line.targetDeliveryDate) le.targetDeliveryDate = 'Expected delivery date is required.'
       if (Object.keys(le).length) e.lines[line.id] = le
     })
     setErrors(e)

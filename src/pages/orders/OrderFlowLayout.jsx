@@ -60,13 +60,17 @@ export default function OrderFlowLayout() {
               {order.customerName} · {order.productName} ({order.productCode}) · Qty {order.quantity}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-5">
             <div>
               <div className="text-xs uppercase text-hos-ink-400">Priority</div>
               <StatusBadge status={order.priority} />
             </div>
             <div>
-              <div className="text-xs uppercase text-hos-ink-400">Target Delivery</div>
+              <div className="text-xs uppercase text-hos-ink-400">Order Date</div>
+              <div className="font-semibold text-hos-ink-800">{formatDate(order.orderDate)}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase text-hos-ink-400">Expected Delivery</div>
               <div className="font-semibold text-hos-ink-800">{formatDate(order.targetDeliveryDate)}</div>
             </div>
             <div>

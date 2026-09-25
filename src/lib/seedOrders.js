@@ -7,6 +7,13 @@
 // ---------------------------------------------------------------------------
 import { Orders, Customers, Employees, Products, Masters, logMaterialTransaction, setFastMode } from './db'
 
+// One Diamond Setting "Diamond Issue" row (see DiamondSettingTab).
+let seedIssueCount = 0
+function diamondIssue(shape, size, quality, colour, pcs, weight) {
+  seedIssueCount += 1
+  return { id: `di_seed_${seedIssueCount}`, shape, size, quality, colour, pcs, weight, beforeSettingImage: [] }
+}
+
 function addDays(n) {
   const d = new Date()
   d.setDate(d.getDate() + n)
@@ -251,10 +258,7 @@ export async function seedDemoOrders() {
     {
       status: 'In Progress',
       assignedPerson: person('diamond_setter'),
-      shape: 'Round',
-      size: '2.0mm',
-      quality: 'VS1',
-      colour: 'F',
+      diamondIssues: [diamondIssue('Round', '2.0mm', 'VS1', 'F', 60, 1.9), diamondIssue('Pear', '1.5mm', 'VS2', 'G', 20, 0.6)],
       issuedPcs: 80,
       issuedWeight: 2.5,
     },
@@ -293,10 +297,7 @@ export async function seedDemoOrders() {
         status: 'Completed',
         assignedPerson: person('diamond_setter'),
         completionDate: addDays(-10),
-        shape: 'Round',
-        size: '2.0mm',
-        quality: 'VVS1',
-        colour: 'D',
+        diamondIssues: [diamondIssue('Round', '2.0mm', 'VVS1', 'D', 30, 1.4)],
         issuedPcs: 30,
         issuedWeight: 1.4,
         usedPcs: 30,
@@ -339,7 +340,7 @@ export async function seedDemoOrders() {
     ['gemStone', specifyGemstone(3, -22)],
     ['casting', { status: 'Completed', assignedPerson: person('casting_operator'), completionDate: addDays(-20), castingDate: addDays(-20), goldPurity: '18K', goldColour: 'Rose', sizeOfArticle: '16 inch', plannedPcs: 1, castedPcs: 1, goldWeight: 3.6, rejectedPcs: 0 }],
     ['filling', { status: 'Completed', assignedPerson: person('filling_operator'), completionDate: addDays(-16), fillingType: 'Hand', weightBeforeFilling: 3.6, weightAfterFilling: 3.65 }],
-    ['diamondSetting', { status: 'Completed', assignedPerson: person('diamond_setter'), completionDate: addDays(-12), shape: 'Pear', size: '1.5mm', quality: 'VS2', colour: 'G', issuedPcs: 18, issuedWeight: 0.7, usedPcs: 18, usedWeight: 0.69 }],
+    ['diamondSetting', { status: 'Completed', assignedPerson: person('diamond_setter'), completionDate: addDays(-12), diamondIssues: [diamondIssue('Pear', '1.5mm', 'VS2', 'G', 18, 0.7)], issuedPcs: 18, issuedWeight: 0.7, usedPcs: 18, usedWeight: 0.69 }],
     ['rhodium', { status: 'Completed', assignedPerson: person('rhodium_operator'), completionDate: addDays(-8), rhodiumType: 'Prongs', weightBefore: 3.65, weightAfter: 3.68 }],
   ]) {
     o8 = await Orders.get(o8.id)
@@ -376,7 +377,7 @@ export async function seedDemoOrders() {
     ['gemStone', specifyGemstone(0, -27)],
     ['casting', { status: 'Completed', assignedPerson: person('casting_operator'), completionDate: addDays(-25), castingDate: addDays(-25), goldPurity: '18K', goldColour: 'White', sizeOfArticle: '7 inch', plannedPcs: 1, castedPcs: 1, goldWeight: 22.5, rejectedPcs: 0 }],
     ['filling', { status: 'Completed', assignedPerson: person('filling_operator'), completionDate: addDays(-21), fillingType: 'Laser', weightBeforeFilling: 22.5, weightAfterFilling: 22.6 }],
-    ['diamondSetting', { status: 'Completed', assignedPerson: person('diamond_setter'), completionDate: addDays(-17), shape: 'Round', size: '2.5mm', quality: 'VVS2', colour: 'E', issuedPcs: 90, issuedWeight: 3.8, usedPcs: 90, usedWeight: 3.75 }],
+    ['diamondSetting', { status: 'Completed', assignedPerson: person('diamond_setter'), completionDate: addDays(-17), diamondIssues: [diamondIssue('Round', '2.5mm', 'VVS2', 'E', 90, 3.8)], issuedPcs: 90, issuedWeight: 3.8, usedPcs: 90, usedWeight: 3.75 }],
     ['rhodium', { status: 'Completed', assignedPerson: person('rhodium_operator'), completionDate: addDays(-13), rhodiumType: 'Full', weightBefore: 22.6, weightAfter: 22.65 }],
     ['finalQc', { status: 'Approved', assignedPerson: person('qc'), completionDate: addDays(-9), finalPcs: 1, finalGoldWeight: 22.5, finalDiamondPcs: 90, finalDiamondWeight: 3.75, checklist: passChecklist() }],
     [
@@ -426,7 +427,7 @@ export async function seedDemoOrders() {
     ['gemStone', specifyGemstone(1, -32)],
     ['casting', { status: 'Completed', assignedPerson: person('casting_operator'), completionDate: addDays(-30), castingDate: addDays(-30), goldPurity: '22K', goldColour: 'Yellow', sizeOfArticle: '2.0mm stud', plannedPcs: 2, castedPcs: 2, goldWeight: 11.2, rejectedPcs: 0 }],
     ['filling', { status: 'Completed', assignedPerson: person('filling_operator'), completionDate: addDays(-26), fillingType: 'Hand', weightBeforeFilling: 11.2, weightAfterFilling: 11.3 }],
-    ['diamondSetting', { status: 'Completed', assignedPerson: person('diamond_setter'), completionDate: addDays(-22), shape: 'Marquise', size: '1.5mm', quality: 'SI1', colour: 'H', issuedPcs: 20, issuedWeight: 0.9, usedPcs: 20, usedWeight: 0.88 }],
+    ['diamondSetting', { status: 'Completed', assignedPerson: person('diamond_setter'), completionDate: addDays(-22), diamondIssues: [diamondIssue('Marquise', '1.5mm', 'SI1', 'H', 20, 0.9)], issuedPcs: 20, issuedWeight: 0.9, usedPcs: 20, usedWeight: 0.88 }],
     ['rhodium', { status: 'Completed', assignedPerson: person('rhodium_operator'), completionDate: addDays(-18), rhodiumType: 'Full', weightBefore: 11.3, weightAfter: 11.34 }],
     ['finalQc', { status: 'Approved', assignedPerson: person('qc'), completionDate: addDays(-14), finalPcs: 2, finalGoldWeight: 11.2, finalDiamondPcs: 20, finalDiamondWeight: 0.88, checklist: passChecklist() }],
     [

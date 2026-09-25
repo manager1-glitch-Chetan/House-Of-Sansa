@@ -1,12 +1,14 @@
 import { STAGES, STAGE_KEYS } from '@/lib/constants'
-import { computeDelay, daysBetween, formatDate, num } from '@/lib/utils'
+import { computeDelay, daysBetween, delayText, formatDate, num, orderDateFields, ORDER_DATE_COLUMNS } from '@/lib/utils'
 
 import { TERMINAL_STATUSES as TERMINAL } from '@/lib/constants'
 
-function delayDaysFor(rec) {
+// fallbackTarget: the order's Expected Delivery Date, used when the stage
+// has no target of its own (same rule as the stage queues — see stageDelayFor).
+function delayDaysFor(rec, fallbackTarget) {
   if (!rec) return { state: 'not-set', delayDays: 0 }
   const terminal = TERMINAL.includes(rec.status)
-  return computeDelay({ targetDate: rec.targetDate, completionDate: rec.completionDate, status: rec.status, isTerminal: terminal })
+  return computeDelay({ targetDate: rec.targetDate || fallbackTarget, completionDate: rec.completionDate, status: rec.status, isTerminal: terminal })
 }
 
 export function buildReports(orders) {
@@ -16,16 +18,15 @@ export function buildReports(orders) {
       title: 'Order Register',
       columns: [
         { key: 'orderNumber', label: 'Order #' },
-        { key: 'orderDateFmt', label: 'Order Date' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'salesPerson', label: 'Sales Person' },
         { key: 'productName', label: 'Article' },
         { key: 'quantity', label: 'Qty' },
         { key: 'priority', label: 'Priority' },
-        { key: 'targetDeliveryDateFmt', label: 'Target Delivery' },
         { key: 'overallStatus', label: 'Status' },
       ],
-      rows: orders.map((o) => ({ ...o, orderDateFmt: formatDate(o.orderDate), targetDeliveryDateFmt: formatDate(o.targetDeliveryDate) })),
+      rows: orders.map((o) => ({ ...o, ...orderDateFields(o) })),
     },
     {
       id: 'production-status',
@@ -33,17 +34,17 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'productName', label: 'Article' },
         { key: 'currentStageLabel', label: 'Current Stage' },
         { key: 'currentStageStatus', label: 'Stage Status' },
         { key: 'overallStatus', label: 'Overall Status' },
-        { key: 'targetDeliveryDateFmt', label: 'Target Delivery' },
       ],
       rows: orders.map((o) => ({
         ...o,
+        ...orderDateFields(o),
         currentStageLabel: STAGES.find((s) => s.key === o.currentStage)?.label,
         currentStageStatus: o.stages?.[o.currentStage]?.status,
-        targetDeliveryDateFmt: formatDate(o.targetDeliveryDate),
       })),
     },
     {
@@ -52,24 +53,27 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'stageLabel', label: 'Pending Stage' },
         { key: 'assignedPerson', label: 'Assigned Person' },
-        { key: 'targetDateFmt', label: 'Target Date' },
+        { key: 'targetDateFmt', label: 'Stage Target', sortKey: 'targetDate' },
         { key: 'delayLabel', label: 'Delay' },
       ],
       rows: orders
         .filter((o) => o.currentStage !== 'closed')
         .map((o) => {
           const rec = o.stages?.[o.currentStage]
-          const info = delayDaysFor(rec)
+          const info = delayDaysFor(rec, o.targetDeliveryDate)
           return {
             id: o.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             stageLabel: STAGES.find((s) => s.key === o.currentStage)?.label,
             assignedPerson: rec?.assignedPerson || '—',
+            targetDate: rec?.targetDate || '',
             targetDateFmt: formatDate(rec?.targetDate),
-            delayLabel: info.state === 'delayed' ? `${info.delayDays}d overdue` : info.state,
+            delayLabel: delayText(info),
           }
         }),
     },
@@ -79,23 +83,28 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'stageLabel', label: 'Delayed Stage' },
         { key: 'assignedPerson', label: 'Assigned Person' },
-        { key: 'targetDateFmt', label: 'Target Date' },
+        { key: 'targetDateFmt', label: 'Stage Target', sortKey: 'targetDate' },
         { key: 'delayDays', label: 'Delay (days)' },
       ],
       rows: orders.flatMap((o) =>
         STAGE_KEYS.filter((k) => k !== 'closed')
-          .map((k) => ({ k, rec: o.stages?.[k] }))
-          .filter(({ rec }) => rec?.targetDate)
-          .map(({ k, rec }) => ({ k, rec, info: delayDaysFor(rec) }))
+          // The stage the order is sitting at also counts as delayed once
+          // it's past Expected Delivery, even without a stage target.
+          .map((k) => ({ k, rec: o.stages?.[k], fallback: k === o.currentStage ? o.targetDeliveryDate : undefined }))
+          .filter(({ rec, fallback }) => rec && (rec.targetDate || fallback))
+          .map(({ k, rec, fallback }) => ({ k, rec, info: delayDaysFor(rec, fallback) }))
           .filter(({ info }) => info.state === 'delayed' || info.state === 'completed-late')
           .map(({ k, rec, info }) => ({
             id: `${o.id}-${k}`,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             stageLabel: STAGES.find((s) => s.key === k)?.label,
             assignedPerson: rec?.assignedPerson || '—',
+            targetDate: rec?.targetDate || '',
             targetDateFmt: formatDate(rec?.targetDate),
             delayDays: info.delayDays,
           }))
@@ -107,6 +116,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'designer', label: 'Designer' },
         { key: 'cadVersion', label: 'CAD Version' },
         { key: 'status', label: 'CAD Status' },
@@ -117,6 +127,7 @@ export function buildReports(orders) {
           id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customerName,
+          ...orderDateFields(o),
           designer: o.stages?.cad?.designerName || o.stages?.cad?.assignedPerson || '—',
           cadVersion: o.stages?.cad?.cadVersion || '—',
           status: o.stages?.cad?.status,
@@ -128,6 +139,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'castingDateFmt', label: 'Casting Date' },
         { key: 'goldWeight', label: 'Gold Weight (g)' },
         { key: 'plannedPcs', label: 'Planned PCS' },
@@ -143,6 +155,7 @@ export function buildReports(orders) {
             id: o.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             castingDateFmt: formatDate(c.castingDate),
             goldWeight: num(c.goldWeight),
             plannedPcs: c.plannedPcs || 0,
@@ -158,6 +171,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'issuedPcs', label: 'Issued PCS' },
         { key: 'usedPcs', label: 'Used PCS' },
         { key: 'returnedPcs', label: 'Returned PCS' },
@@ -173,6 +187,7 @@ export function buildReports(orders) {
             id: o.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             issuedPcs: d.issuedPcs || 0,
             usedPcs: d.usedPcs || 0,
             returnedPcs: d.returnedPcs || 0,
@@ -187,6 +202,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'brokenLostPcs', label: 'Broken/Lost PCS' },
         { key: 'brokenLostWeight', label: 'Broken/Lost Weight (ct)' },
         { key: 'setter', label: 'Diamond Setter' },
@@ -197,6 +213,7 @@ export function buildReports(orders) {
           id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customerName,
+          ...orderDateFields(o),
           brokenLostPcs: o.stages?.diamondSetting?.brokenLostPcs,
           brokenLostWeight: num(o.stages?.diamondSetting?.brokenLostWeight),
           setter: o.stages?.diamondSetting?.assignedPerson || '—',
@@ -208,6 +225,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'estimated', label: 'Estimated (g)' },
         { key: 'actual', label: 'Actual (Casting) (g)' },
         { key: 'final', label: 'Final (Packing) (g)' },
@@ -218,6 +236,7 @@ export function buildReports(orders) {
           id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customerName,
+          ...orderDateFields(o),
           estimated: num(o.gold?.estimatedWeight),
           actual: num(o.stages?.casting?.goldWeight),
           final: num(o.stages?.packing?.finalGoldWeight || o.stages?.casting?.goldWeight),
@@ -229,6 +248,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'stageLabel', label: 'Stage' },
         { key: 'at', label: 'Date' },
         { key: 'user', label: 'By' },
@@ -241,6 +261,7 @@ export function buildReports(orders) {
             id: h.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             stageLabel: STAGES.find((s) => s.key === h.stage)?.label,
             at: formatDate(h.at),
             user: h.user,
@@ -254,6 +275,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'stageLabel', label: 'Stage' },
         { key: 'at', label: 'Date' },
         { key: 'user', label: 'By' },
@@ -266,6 +288,7 @@ export function buildReports(orders) {
             id: h.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             stageLabel: STAGES.find((s) => s.key === h.stage)?.label,
             at: formatDate(h.at),
             user: h.user,
@@ -279,6 +302,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'tagNo', label: 'Tag #' },
         { key: 'invoiceNo', label: 'Invoice #' },
         { key: 'packingDateFmt', label: 'Packing Date' },
@@ -290,6 +314,7 @@ export function buildReports(orders) {
           id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customerName,
+          ...orderDateFields(o),
           tagNo: o.stages?.packing?.tagNo || '—',
           invoiceNo: o.stages?.packing?.invoiceNo || '—',
           packingDateFmt: formatDate(o.stages?.packing?.completionDate || o.stages?.packing?.startDate),
@@ -302,9 +327,9 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'courierTransporter', label: 'Courier / Transporter' },
         { key: 'trackingNo', label: 'Tracking #' },
-        { key: 'expectedFmt', label: 'Expected Date' },
         { key: 'actualFmt', label: 'Actual Date' },
         { key: 'delayDays', label: 'Delay (days)' },
         { key: 'status', label: 'Status' },
@@ -313,14 +338,14 @@ export function buildReports(orders) {
         .filter((o) => o.stages?.delivery && o.stages.delivery.status !== 'Pending')
         .map((o) => {
           const d = o.stages?.delivery || {}
-          const info = delayDaysFor(d)
+          const info = delayDaysFor(d, o.targetDeliveryDate)
           return {
             id: o.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
+            ...orderDateFields(o),
             courierTransporter: d.courierTransporter || '—',
             trackingNo: d.trackingNo || '—',
-            expectedFmt: formatDate(d.targetDate),
             actualFmt: formatDate(d.completionDate),
             delayDays: info.delayDays,
             status: d.status,
@@ -333,7 +358,7 @@ export function buildReports(orders) {
       columns: [
         { key: 'orderNumber', label: 'Order #' },
         { key: 'customerName', label: 'Customer' },
-        { key: 'orderDateFmt', label: 'Order Date' },
+        ...ORDER_DATE_COLUMNS,
         { key: 'closedDateFmt', label: 'Closed Date' },
         { key: 'cycleDays', label: 'Cycle Time (days)' },
         { key: 'closedBy', label: 'Closed By' },
@@ -344,7 +369,7 @@ export function buildReports(orders) {
           id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customerName,
-          orderDateFmt: formatDate(o.orderDate),
+          ...orderDateFields(o),
           closedDateFmt: formatDate(o.closedDate),
           cycleDays: o.closedDate ? daysBetween(o.orderDate, o.closedDate) : '—',
           closedBy: o.closedBy || '—',
