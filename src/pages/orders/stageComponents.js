@@ -6,6 +6,7 @@ import GemStoneTab from './stages/GemStoneTab'
 import CastingTab from './stages/CastingTab'
 import FillingTab from './stages/FillingTab'
 import DiamondSettingTab from './stages/DiamondSettingTab'
+import ConsumptionTab from './stages/ConsumptionTab'
 import RhodiumTab from './stages/RhodiumTab'
 import FinalQcTab from './stages/FinalQcTab'
 import PackingTab from './stages/PackingTab'
@@ -25,6 +26,7 @@ export const STAGE_COMPONENTS = {
   casting: CastingTab,
   filling: FillingTab,
   diamondSetting: DiamondSettingTab,
+  consumption: ConsumptionTab,
   rhodium: RhodiumTab,
   finalQc: FinalQcTab,
   packing: PackingTab,

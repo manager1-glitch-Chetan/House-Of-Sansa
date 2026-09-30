@@ -5,6 +5,7 @@ import HistoryTable from '@/components/common/HistoryTable'
 import { StatusBadge, DelayBadge } from '@/components/common/Badge'
 import { stageDelayFor, DELAY_STATE_META, formatDate, todayISO } from '@/lib/utils'
 import { stageLabel } from '@/lib/constants'
+import PreviousStagePanel from './PreviousStagePanel'
 
 /**
  * Common shell every stage form is built on. Per the simplified workflow:
@@ -13,6 +14,9 @@ import { stageLabel } from '@/lib/constants'
  * dates are recorded automatically the moment the stage is submitted. The
  * operator only ever sees two actions: Cancel, or Submit (which completes
  * the stage and hands it to the next one).
+ *
+ * Above the stage's own fields sits a read-only recap of what the previous
+ * stage (and, one click away, every earlier stage) recorded.
  */
 export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Completed', onCancel, onSubmit, hideRemarks = false, hideAttachments = false }) {
   const { order, draft, setField, editMode, requestEdit, locked, isTerminal, saving, save, canOverride, record, user } = ctx
@@ -22,7 +26,7 @@ export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Co
   const disabled = !editMode || saving
 
   // Most stages just need the generic "set status, stamp person/dates" save.
-  // A few (Casting, Diamond Setting) also need to log a material ledger
+  // A few (Casting, Additional Issue, Consumption) also need to log a material ledger
   // entry alongside — those pass their own `onSubmit` that does both, and
   // must return the same { ok } / { error } shape `save()` returns so the
   // button below knows whether to close the form.
@@ -45,18 +49,6 @@ export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Co
     if (res && !res.error && !res.cancelled) onCancel?.()
   }
 
-  // "In Progress" just logs where things stand right now — it saves whatever
-  // is filled in so far to Stage History, but (being a non-terminal status)
-  // never advances the order. Only Submit moves it to the next stage.
-  const handleInProgress = async () => {
-    const res = await save('In Progress', {
-      status: 'In Progress',
-      assignedPerson: user?.name || draft.assignedPerson,
-      startDate: draft.startDate || todayISO(),
-    })
-    if (res?.error) alert(res.error)
-  }
-
   return (
     <div className="space-y-5">
       {locked && (
@@ -66,22 +58,34 @@ export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Co
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={record.status} />
-        <DelayBadge state={delayInfo.state} days={delayInfo.delayDays} label={DELAY_STATE_META[delayInfo.state]?.label} />
-        <span className="text-xs text-hos-ink-400">
-          Assigned to <span className="font-semibold text-hos-ink-600">{record.assignedPerson || user?.name}</span>
-        </span>
-        <span className="text-xs text-hos-ink-400">
-          Order Date <span className="font-semibold text-hos-ink-600">{formatDate(order?.orderDate)}</span>
-          {' · '}Expected Delivery <span className="font-semibold text-hos-ink-600">{formatDate(order?.targetDeliveryDate)}</span>
-        </span>
-        {isTerminal && !editMode && (
-          <button className="btn-outline btn-sm ml-auto" onClick={requestEdit}>
-            <Pencil size={13} /> Edit (Correction)
-          </button>
-        )}
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={record.status} />
+          <DelayBadge state={delayInfo.state} days={delayInfo.delayDays} label={DELAY_STATE_META[delayInfo.state]?.label} />
+          <span className="text-xs text-hos-ink-400">
+            Assigned to <span className="font-semibold text-hos-ink-600">{record.assignedPerson || user?.name}</span>
+          </span>
+          {isTerminal && !editMode && (
+            <button className="btn-outline btn-sm ml-auto" onClick={requestEdit}>
+              <Pencil size={13} /> Edit (Correction)
+            </button>
+          )}
+        </div>
+        {/* Which piece this is — customer, article, pcs — next to its dates. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-hos-ink-400">
+          <span className="font-semibold text-hos-ink-700">{order?.customerName}</span>
+          {order?.productName && <span>· {order.productName}</span>}
+          {order?.quantity ? <span>· {order.quantity} pc{Number(order.quantity) === 1 ? '' : 's'}</span> : null}
+          <span>
+            · Order Date <span className="font-semibold text-hos-ink-600">{formatDate(order?.orderDate)}</span>
+          </span>
+          <span>
+            · Expected Delivery <span className="font-semibold text-hos-ink-600">{formatDate(order?.targetDeliveryDate)}</span>
+          </span>
+        </div>
       </div>
+
+      <PreviousStagePanel order={order} stageKey={stageKey} />
 
       {children}
 
@@ -100,9 +104,6 @@ export default function StageFrame({ ctx, stageKey, children, submitStatus = 'Co
         <div className="flex flex-wrap gap-2 border-t border-hos-ink-100 pt-4">
           <button className="btn-outline" disabled={saving} onClick={onCancel}>
             Cancel
-          </button>
-          <button className="btn-secondary" disabled={saving} onClick={handleInProgress}>
-            In Progress
           </button>
           <button className="btn-gold" disabled={saving} onClick={onSubmitClick}>
             Submit

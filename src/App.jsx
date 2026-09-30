@@ -9,7 +9,6 @@ import { MODULES } from '@/lib/constants'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import OrdersList from '@/pages/orders/OrdersList'
-import OrderReceivedForm from '@/pages/orders/OrderReceivedForm'
 import OrderFlowLayout from '@/pages/orders/OrderFlowLayout'
 import OrderFlowIndex from '@/pages/orders/OrderFlowIndex'
 import OrderStagePage from '@/pages/orders/OrderStagePage'
@@ -51,14 +50,8 @@ export default function App() {
                     </RequireModule>
                   }
                 />
-                <Route
-                  path="/orders/new"
-                  element={
-                    <RequireModule module={MODULES.ORDERS}>
-                      <OrderReceivedForm />
-                    </RequireModule>
-                  }
-                />
+                {/* New Order now lives on the Orders page itself; keep old links working. */}
+                <Route path="/orders/new" element={<Navigate to="/orders" replace state={{ newOrder: true }} />} />
                 <Route
                   path="/orders/:id"
                   element={

@@ -95,7 +95,7 @@ export default function Dashboard() {
   const quickAccess = [
     { label: 'Order Planning Queue', icon: AlertTriangle, tone: 'text-red-600 bg-red-50', onClick: () => navigate('/stage/planning') },
     { label: 'Casting Queue', icon: Flame, tone: 'text-orange-600 bg-orange-50', onClick: () => navigate('/stage/casting') },
-    { label: 'Diamond Setting Queue', icon: Gem, tone: 'text-violet-600 bg-violet-50', onClick: () => navigate('/stage/diamond-setting') },
+    { label: 'Additional Issue Queue', icon: Gem, tone: 'text-violet-600 bg-violet-50', onClick: () => navigate('/stage/diamond-setting') },
     { label: 'Packing Queue', icon: Package, tone: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/stage/packing') },
   ]
 
@@ -117,7 +117,7 @@ export default function Dashboard() {
         title="Dashboard"
         subtitle="Complete order-to-delivery visibility for House of Sansa, Raipur."
         actions={
-          <button className="btn-gold" onClick={() => navigate('/orders/new')}>
+          <button className="btn-gold" onClick={() => navigate('/orders', { state: { newOrder: true } })}>
             + New Order
           </button>
         }

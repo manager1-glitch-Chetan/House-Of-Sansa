@@ -42,6 +42,10 @@ const FIELD_SNAPSHOT_SKIP = new Set([
 // show when it was scheduled to start, due, and actually finished.
 const DATE_FIELD_KEYS = new Set(['startDate', 'targetDate', 'completionDate', 'orderDate', 'dispatchDate', 'rptDate', 'issueDate', 'targetDeliveryDate'])
 
+// Stage-specific names where the bare field key would be ambiguous in
+// history ("Rpt Date", "Issue Date") — match the labels on the stage forms.
+const FIELD_LABELS = { rptDate: 'CAM / RPT Date', issueDate: 'Rhodium Date', goldWeight: 'Casting Weight' }
+
 // Reduces an arbitrary stage patch object down to a flat, display-ready list
 // of { label, value } pairs — used to show "what was actually filled in" on
 // history/audit entries, without dumping raw JSON at the user.
@@ -57,7 +61,7 @@ export function summarizeFields(obj) {
       continue
     }
     if (typeof value === 'object') continue // nested objects (rare) — skip rather than dump
-    out.push({ label: titleCase(key), value: DATE_FIELD_KEYS.has(key) ? formatDate(value) : String(value) })
+    out.push({ label: FIELD_LABELS[key] || titleCase(key), value: DATE_FIELD_KEYS.has(key) ? formatDate(value) : String(value) })
   }
   return out
 }
@@ -129,24 +133,75 @@ export const DELAY_STATE_META = {
 }
 
 // ---------------------------------------------------------------------------
-// Diamond Setting rule: more diamonds can't come back than were issued.
-// Shared by the form (inline errors) and Orders.updateStage (hard stop), so
-// both enforce exactly the same limit. Returns { returnedPcs?, returnedWeight? }.
+// Consumption rule, for diamonds and gem stones alike: more can't come back
+// than was issued at Additional Issue — Returned PCS / Weight are each
+// capped at the issued total. (Used and Broken / Lost aren't checked.)
+// Shared by the Consumption form (inline errors) and Orders.updateStage (hard
+// stop), so both enforce exactly the same limit.
+//
+// `rec` carries the issued totals (issuedPcs / issuedWeight,
+// gemstoneIssuedPcs / gemstoneIssuedWeight) plus the consumption fields.
+// Returns error messages keyed by the field they belong under:
+//   returnedPcs, returnedWeight, gemstoneReturnedPcs, gemstoneReturnedWeight
 // ---------------------------------------------------------------------------
-export function diamondReturnErrors(rec) {
+const CONSUMPTION_MATERIALS = [
+  { name: 'diamond', prefix: '' },
+  { name: 'gem stone', prefix: 'gemstone' },
+]
+
+export function consumptionErrors(rec) {
   const errors = {}
-  const issuedPcs = Number(rec?.issuedPcs) || 0
-  const issuedWeight = Number(rec?.issuedWeight) || 0
-  const returnedPcs = Number(rec?.returnedPcs) || 0
-  const returnedWeight = Number(rec?.returnedWeight) || 0
-  if (returnedPcs > issuedPcs) {
-    errors.returnedPcs = `Returned PCS (${returnedPcs}) cannot be more than Issued PCS (${issuedPcs}).`
-  }
-  // Small tolerance so 0.1 + 0.2 style float sums don't trip the check.
-  if (returnedWeight > issuedWeight + 1e-9) {
-    errors.returnedWeight = `Returned Weight (${returnedWeight} ct) cannot be more than Issued Weight (${issuedWeight} ct).`
-  }
+  const v = (key) => Number(rec?.[key]) || 0
+  CONSUMPTION_MATERIALS.forEach(({ name, prefix }) => {
+    const k = (field) => (prefix ? `${prefix}${field}` : field.charAt(0).toLowerCase() + field.slice(1))
+    const issuedPcs = v(k('IssuedPcs'))
+    const issuedWeight = v(k('IssuedWeight'))
+    const returnedPcs = v(k('ReturnedPcs'))
+    const returnedWeight = v(k('ReturnedWeight'))
+    if (returnedPcs > issuedPcs) errors[k('ReturnedPcs')] = `Returned PCS (${returnedPcs}) cannot be more than issued ${name} PCS (${issuedPcs}).`
+    // Small tolerance so 0.1 + 0.2 style float sums don't trip the weight check.
+    if (returnedWeight > issuedWeight + 1e-9) errors[k('ReturnedWeight')] = `Returned Weight (${returnedWeight} ct) cannot be more than issued ${name} weight (${issuedWeight} ct).`
+  })
   return errors
+}
+
+/**
+ * Starting values for the Final QC form — the most accurate figure recorded
+ * so far for each, with the stage it came from (shown as a chip by the label):
+ *   Final Pcs            Casting good pcs → order Pcs
+ *   Final Gold Weight    Rhodium weight after → Filling weight after → Casting Weight → order estimate
+ *   Final Diamond        Consumption used → order planned diamond
+ *   Final Gem Stone      Consumption used → Gem Stone stage requirement
+ * Returns { finalPcs: { value, source }, finalGoldWeight: …, finalDiamondPcs: …,
+ * finalDiamondWeight: …, finalGemstonePcs: …, finalGemstoneWeight: … };
+ * `value` is '' when nothing has been recorded anywhere.
+ */
+export function finalQcDefaults(order = {}) {
+  const st = order.stages || {}
+  const casting = st.casting || {}
+  const cons = st.consumption || {}
+  const recorded = (v) => v !== '' && v != null
+  const pick = (...options) => {
+    const hit = options.find(([value]) => recorded(value))
+    return hit ? { value: hit[0], source: hit[1] } : { value: '', source: '' }
+  }
+  const goodPcs = recorded(casting.castedPcs) ? Math.max(0, (Number(casting.castedPcs) || 0) - (Number(casting.rejectedPcs) || 0)) : ''
+  const gemReq = st.gemStone?.particulars || []
+  const gemReqTotal = (key) => (gemReq.length ? Math.round(gemReq.reduce((sum, p) => sum + (Number(p[key]) || 0), 0) * 1000) / 1000 : '')
+  const positive = (v) => (Number(v) > 0 ? v : '')
+  return {
+    finalPcs: pick([goodPcs, 'Casting'], [order.quantity, 'Order']),
+    finalGoldWeight: pick(
+      [positive(st.rhodium?.weightAfter), 'Rhodium'],
+      [positive(st.filling?.weightAfterFilling), 'Filling'],
+      [positive(casting.goldWeight), 'Casting'],
+      [positive(order.gold?.estimatedWeight), 'Order (est.)']
+    ),
+    finalDiamondPcs: pick([cons.usedPcs, 'Consumption'], [positive(order.diamond?.pcs), 'Order']),
+    finalDiamondWeight: pick([cons.usedWeight, 'Consumption'], [positive(order.diamond?.weight), 'Order']),
+    finalGemstonePcs: pick([cons.gemstoneUsedPcs, 'Consumption'], [gemReqTotal('pcs'), 'Gem Stone req.']),
+    finalGemstoneWeight: pick([cons.gemstoneUsedWeight, 'Consumption'], [gemReqTotal('weight'), 'Gem Stone req.']),
+  }
 }
 
 /**

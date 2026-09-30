@@ -141,7 +141,7 @@ export function buildReports(orders) {
         { key: 'customerName', label: 'Customer' },
         ...ORDER_DATE_COLUMNS,
         { key: 'castingDateFmt', label: 'Casting Date' },
-        { key: 'goldWeight', label: 'Gold Weight (g)' },
+        { key: 'goldWeight', label: 'Casting Weight (g)' },
         { key: 'plannedPcs', label: 'Planned PCS' },
         { key: 'castedPcs', label: 'Casted PCS' },
         { key: 'goodPcs', label: 'Good PCS' },
@@ -181,17 +181,19 @@ export function buildReports(orders) {
       rows: orders
         .filter((o) => o.stages?.diamondSetting?.issuedPcs)
         .map((o) => {
+          // Issued on Additional Issue; used / returned / lost on Consumption.
           const d = o.stages?.diamondSetting || {}
-          const balance = (Number(d.issuedPcs) || 0) - (Number(d.usedPcs) || 0) - (Number(d.returnedPcs) || 0) - (Number(d.brokenLostPcs) || 0)
+          const c = o.stages?.consumption || {}
+          const balance = (Number(d.issuedPcs) || 0) - (Number(c.usedPcs) || 0) - (Number(c.returnedPcs) || 0) - (Number(c.brokenLostPcs) || 0)
           return {
             id: o.id,
             orderNumber: o.orderNumber,
             customerName: o.customerName,
             ...orderDateFields(o),
             issuedPcs: d.issuedPcs || 0,
-            usedPcs: d.usedPcs || 0,
-            returnedPcs: d.returnedPcs || 0,
-            brokenLostPcs: d.brokenLostPcs || 0,
+            usedPcs: c.usedPcs || 0,
+            returnedPcs: c.returnedPcs || 0,
+            brokenLostPcs: c.brokenLostPcs || 0,
             balancePcs: balance,
           }
         }),
@@ -208,15 +210,15 @@ export function buildReports(orders) {
         { key: 'setter', label: 'Diamond Setter' },
       ],
       rows: orders
-        .filter((o) => Number(o.stages?.diamondSetting?.brokenLostPcs) > 0)
+        .filter((o) => Number(o.stages?.consumption?.brokenLostPcs) > 0)
         .map((o) => ({
           id: o.id,
           orderNumber: o.orderNumber,
           customerName: o.customerName,
           ...orderDateFields(o),
-          brokenLostPcs: o.stages?.diamondSetting?.brokenLostPcs,
-          brokenLostWeight: num(o.stages?.diamondSetting?.brokenLostWeight),
-          setter: o.stages?.diamondSetting?.assignedPerson || '—',
+          brokenLostPcs: o.stages?.consumption?.brokenLostPcs,
+          brokenLostWeight: num(o.stages?.consumption?.brokenLostWeight),
+          setter: o.stages?.consumption?.assignedPerson || o.stages?.diamondSetting?.assignedPerson || '—',
         })),
     },
     {

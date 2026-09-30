@@ -25,7 +25,7 @@ export default function CamRptTab({ order, employees, onChanged, onCancel }) {
         <Field label="Approved By">
           <Select value={draft.approvedBy || ''} onChange={(e) => setField('approvedBy', e.target.value)} options={approvers.map((a) => a.name)} disabled={disabled} />
         </Field>
-        <Field label="Date">
+        <Field label="CAM / RPT Date">
           <TextInput type="date" value={draft.rptDate || ''} onChange={(e) => setField('rptDate', e.target.value)} disabled={disabled} />
         </Field>
       </div>

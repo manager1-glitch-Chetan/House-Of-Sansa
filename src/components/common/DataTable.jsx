@@ -52,7 +52,7 @@ export default function DataTable({
 }) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
-  const [page, setPage] = useState(1)
+  const [pageState, setPage] = useState(1)
   const [hidden, setHiddenState] = useState(() => loadHidden(columnsKey))
   const [showColumnPicker, setShowColumnPicker] = useState(false)
 
@@ -93,6 +93,9 @@ export default function DataTable({
   }, [filtered, sort, columns])
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+  // Rows can shrink under us (a parent filter changes) — clamp so we never
+  // sit on a page past the end showing an empty table.
+  const page = Math.min(pageState, totalPages)
   const pageRows = sorted.slice((page - 1) * pageSize, page * pageSize)
 
   const toggleSort = (key) => {
@@ -249,10 +252,10 @@ export default function DataTable({
             Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, sorted.length)} of {sorted.length}
           </span>
           <div className="flex gap-1">
-            <button className="btn-outline btn-sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
+            <button className="btn-outline btn-sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
               Prev
             </button>
-            <button className="btn-outline btn-sm" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
+            <button className="btn-outline btn-sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>
               Next
             </button>
           </div>

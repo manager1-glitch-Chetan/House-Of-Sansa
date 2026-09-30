@@ -24,7 +24,7 @@ export default function RhodiumTab({ order, employees, onChanged, onCancel }) {
         <Field label="Approved By">
           <Select value={draft.approvedBy || ''} onChange={(e) => setField('approvedBy', e.target.value)} options={approvers.map((a) => a.name)} disabled={disabled} />
         </Field>
-        <Field label="Date">
+        <Field label="Rhodium Date">
           <TextInput type="date" value={draft.issueDate || ''} onChange={(e) => setField('issueDate', e.target.value)} disabled={disabled} />
         </Field>
         <Field label="Type">

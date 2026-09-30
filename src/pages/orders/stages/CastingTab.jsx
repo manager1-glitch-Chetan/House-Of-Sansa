@@ -91,6 +91,9 @@ export default function CastingTab({ order, masters, onChanged, onCancel }) {
           <Field label="Casting Date">
             <TextInput type="date" value={draft.castingDate || ''} onChange={(e) => setField('castingDate', e.target.value)} disabled={disabled} />
           </Field>
+          <Field label="Casting Weight (g)">
+            <TextInput type="number" step="0.01" value={draft.goldWeight || ''} onChange={(e) => setField('goldWeight', e.target.value)} disabled={disabled} />
+          </Field>
           <Field
             label="Purity"
             hint={orderPurity ? (purityChanged ? `Changed from ${orderPurity} — ${draft.purityChangeReason || 'reason needed'}` : `As per order (${orderPurity})`) : undefined}
@@ -108,9 +111,6 @@ export default function CastingTab({ order, masters, onChanged, onCancel }) {
           </Field>
           <Field label="Casted Pcs">
             <TextInput type="number" value={draft.castedPcs || ''} onChange={(e) => setField('castedPcs', e.target.value)} disabled={disabled} />
-          </Field>
-          <Field label="Gold Weight (g)">
-            <TextInput type="number" step="0.01" value={draft.goldWeight || ''} onChange={(e) => setField('goldWeight', e.target.value)} disabled={disabled} />
           </Field>
           <Field label="Rejected Pcs">
             <TextInput type="number" value={draft.rejectedPcs || ''} onChange={(e) => setField('rejectedPcs', e.target.value)} disabled={disabled} />

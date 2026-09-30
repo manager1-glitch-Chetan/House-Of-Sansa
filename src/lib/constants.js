@@ -16,8 +16,13 @@ export const STAGES = [
   { key: 'gemStone', label: 'Gem Stone', dept: 'Gem Stone', route: 'gem-stone' },
   { key: 'casting', label: 'Casting', dept: 'Casting', route: 'casting' },
   { key: 'filling', label: 'Filling', dept: 'Filling', route: 'filling' },
-  { key: 'diamondSetting', label: 'Diamond Setting', dept: 'Diamond Setting', route: 'diamond-setting' },
+  // Shown as "Additional Issue"; key and route keep their original names so
+  // saved orders, permissions and existing /stage/diamond-setting links work.
+  { key: 'diamondSetting', label: 'Additional Issue', dept: 'Additional Issue', route: 'diamond-setting' },
   { key: 'rhodium', label: 'Rhodium', dept: 'Rhodium', route: 'rhodium' },
+  // What was actually used / returned / broken out of the Additional Issue —
+  // recorded after Rhodium, right before Final QC.
+  { key: 'consumption', label: 'Consumption', dept: 'Consumption', route: 'consumption' },
   { key: 'finalQc', label: 'Final Jewellery Checking', dept: 'Quality Control', route: 'final-qc' },
   { key: 'packing', label: 'Packing', dept: 'Packing', route: 'packing' },
   { key: 'delivery', label: 'Delivery', dept: 'Delivery', route: 'delivery' },
@@ -113,13 +118,13 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   sales: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['orderReceived'] },
   production_manager: {
     modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS],
-    stages: ['planning', 'karigarAssign', 'cad', 'camRpt', 'gemStone', 'casting', 'filling', 'diamondSetting', 'rhodium'],
+    stages: ['planning', 'karigarAssign', 'cad', 'camRpt', 'gemStone', 'casting', 'filling', 'diamondSetting', 'rhodium', 'consumption'],
   },
   cad_designer: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['cad'] },
   cam_operator: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['camRpt'] },
   casting_operator: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['casting'] },
   filling_operator: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['filling'] },
-  diamond_setter: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['diamondSetting'] },
+  diamond_setter: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['diamondSetting', 'consumption'] },
   rhodium_operator: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['rhodium'] },
   qc: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['finalQc'] },
   packing: { modules: [MODULES.DASHBOARD, MODULES.ORDERS, MODULES.NOTIFICATIONS], stages: ['packing'] },

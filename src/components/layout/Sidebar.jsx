@@ -3,7 +3,6 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   PackageSearch,
-  PlusCircle,
   Boxes,
   Users,
   Bell,
@@ -19,6 +18,7 @@ import {
   ShieldCheck,
   Package,
   Truck,
+  Scale,
   LogOut,
   X,
 } from 'lucide-react'
@@ -30,8 +30,7 @@ import { cx } from '@/lib/utils'
 
 const TOP_NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: MODULES.DASHBOARD },
-  { to: '/orders/new', label: 'New Order', icon: PlusCircle, module: MODULES.ORDERS },
-  { to: '/orders', label: 'All Orders', icon: PackageSearch, module: MODULES.ORDERS },
+  { to: '/orders', label: 'Orders', icon: PackageSearch, module: MODULES.ORDERS },
 ]
 
 // One sidebar item per production stage — this is the "work queue" for that
@@ -44,8 +43,9 @@ const STAGE_NAV = [
   { key: 'gemStone', label: 'Gem Stone', icon: Diamond },
   { key: 'casting', label: 'Casting', icon: Flame },
   { key: 'filling', label: 'Filling', icon: Droplet },
-  { key: 'diamondSetting', label: 'Diamond Setting', icon: Gem },
+  { key: 'diamondSetting', label: 'Additional Issue', icon: Gem },
   { key: 'rhodium', label: 'Rhodium', icon: Sparkles },
+  { key: 'consumption', label: 'Consumption', icon: Scale },
   { key: 'finalQc', label: 'Final QC', icon: ShieldCheck },
   { key: 'packing', label: 'Packing', icon: Package },
   { key: 'delivery', label: 'Delivery', icon: Truck },

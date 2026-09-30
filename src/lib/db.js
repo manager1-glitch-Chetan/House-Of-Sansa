@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { DB_KEY, STAGES, STAGE_KEYS, stageIndex, MASTER_TYPES, ORDER_OVERALL_STATUS, TERMINAL_STATUSES } from './constants'
-import { uid, todayISO, computeDelay, summarizeFields, diamondReturnErrors } from './utils'
+import { uid, todayISO, computeDelay, summarizeFields, consumptionErrors, finalQcDefaults } from './utils'
 
 const LATENCY = 120 // ms — simulated network latency, keeps async UX honest
 let fastMode = false // bypassed during first-run demo-data seeding only
@@ -79,15 +79,28 @@ const MASTER_SEED_DEFAULTS = {
 // user's already-seeded DB (e.g. after this feature is added on top of an
 // existing localStorage database), without touching lists that already exist
 // (so items a user has since edited/removed are left alone).
+//
+// One exception, applied once per database: a list that exists but is
+// completely empty (e.g. the Gem Stone dropdowns in older browser data) gets
+// its defaults too. The meta flag stops this from re-filling a list someone
+// deliberately clears later.
 function ensureMasterDefaults(state) {
   if (!state.masters) state.masters = {}
+  if (!state.meta) state.meta = {}
+  const refillEmpty = !state.meta.emptyMastersRefilled
   let changed = false
   MASTER_TYPES.forEach((m) => {
-    if (!(m.key in state.masters)) {
+    const missing = !(m.key in state.masters)
+    const empty = refillEmpty && Array.isArray(state.masters[m.key]) && state.masters[m.key].length === 0
+    if (missing || empty) {
       state.masters[m.key] = (MASTER_SEED_DEFAULTS[m.key] || []).map((n) => ({ id: uid('m'), name: n, active: true }))
       changed = true
     }
   })
+  if (refillEmpty) {
+    state.meta.emptyMastersRefilled = true
+    changed = true
+  }
   if (changed) writeRaw(state)
 }
 
@@ -165,10 +178,21 @@ function defaultCompletedPatch(stageKey, order, completionDate) {
         diamondIssues: [{ id: uid('di'), shape: 'Round', size: '2.0mm', quality: 'VS1', colour: 'F', pcs: d.pcs || 0, weight: d.weight || 0, beforeSettingImage: [] }],
         issuedPcs: d.pcs || 0,
         issuedWeight: d.weight || 0,
-        usedPcs: d.pcs || 0,
-        usedWeight: d.weight || 0,
         completionDate,
       }
+    case 'consumption': {
+      // Everything issued counted as used — nothing returned or broken.
+      const issued = order.stages?.diamondSetting || {}
+      return {
+        status: 'Completed',
+        assignedPerson: personByRole('diamond_setter'),
+        usedPcs: issued.issuedPcs ?? d.pcs ?? 0,
+        usedWeight: issued.issuedWeight ?? d.weight ?? 0,
+        gemstoneUsedPcs: issued.gemstoneIssuedPcs || 0,
+        gemstoneUsedWeight: issued.gemstoneIssuedWeight || 0,
+        completionDate,
+      }
+    }
     case 'rhodium':
       return {
         status: 'Completed',
@@ -178,17 +202,23 @@ function defaultCompletedPatch(stageKey, order, completionDate) {
         weightAfter: g.estimatedWeight || 0,
         completionDate,
       }
-    case 'finalQc':
+    case 'finalQc': {
+      // Same figures the Final QC form starts from (Consumption used,
+      // Casting weight, …), so a backfilled stage matches a real one.
+      const fq = finalQcDefaults(order)
       return {
         status: 'Approved',
         assignedPerson: personByRole('qc'),
-        finalPcs: order.quantity || 1,
-        finalGoldWeight: g.estimatedWeight || 0,
-        finalDiamondPcs: d.pcs || 0,
-        finalDiamondWeight: d.weight || 0,
+        finalPcs: fq.finalPcs.value || order.quantity || 1,
+        finalGoldWeight: fq.finalGoldWeight.value || g.estimatedWeight || 0,
+        finalDiamondPcs: fq.finalDiamondPcs.value || d.pcs || 0,
+        finalDiamondWeight: fq.finalDiamondWeight.value || d.weight || 0,
+        finalGemstonePcs: fq.finalGemstonePcs.value || 0,
+        finalGemstoneWeight: fq.finalGemstoneWeight.value || 0,
         checklist: REPAIR_QC_ITEMS.map((item) => ({ item, result: 'Pass', remarks: '' })),
         completionDate,
       }
+    }
     case 'packing':
       return { status: 'Packed', assignedPerson: personByRole('packing'), pcs: order.quantity || 1, tagNo: `TAG-${String(order.orderNumber || '').slice(-4) || '0000'}`, completionDate }
     case 'delivery':
@@ -212,7 +242,12 @@ function ensureStageSequenceConsistency(state) {
     STAGE_KEYS.forEach((key, i) => {
       if (TERMINAL_STATUSES.includes(order.stages?.[key]?.status)) lastTerminalIdx = i
     })
-    for (let i = 0; i < lastTerminalIdx; i++) {
+    // Only holes *behind* the order's current stage are repaired. A stage
+    // completed ahead of it (Consumption done before it moved after Rhodium)
+    // is real data, not a reason to fake-complete the stages in between.
+    const currentIdx = stageIndex(order.currentStage)
+    const repairUpTo = currentIdx >= 0 ? Math.min(lastTerminalIdx, currentIdx) : lastTerminalIdx
+    for (let i = 0; i < repairUpTo; i++) {
       const key = STAGE_KEYS[i]
       const stage = order.stages[key]
       if (!stage || TERMINAL_STATUSES.includes(stage.status)) continue
@@ -277,6 +312,97 @@ function ensureStageRecordsComplete(state) {
   return changed
 }
 
+// Fields that moved from the old Diamond Setting stage (now "Additional
+// Issue", issue only) to the Consumption stage when the two were split.
+const CONSUMPTION_FIELDS = [
+  'usedPcs',
+  'usedWeight',
+  'returnedPcs',
+  'returnedWeight',
+  'brokenLostPcs',
+  'brokenLostWeight',
+  'afterSettingImage',
+  'consumptionRemarks',
+  'gemstoneUsedPcs',
+  'gemstoneUsedWeight',
+  'gemstoneReturnedPcs',
+  'gemstoneReturnedWeight',
+  'gemstoneBrokenLostPcs',
+  'gemstoneBrokenLostWeight',
+  'gemstoneAfterSettingImage',
+  'gemstoneConsumptionRemarks',
+]
+
+// One-time move of existing orders onto the split stages. Runs after
+// ensureStageRecordsComplete() (so every order has a Consumption record) and
+// before ensureStageSequenceConsistency() — otherwise that would fill
+// Consumption with made-up defaults for orders already past it. Orders whose
+// Additional Issue was already completed get Consumption completed with the
+// same person/date and the values they actually entered; orders still at
+// Additional Issue stay there, with anything entered carried over.
+function migrateConsumptionSplit(state) {
+  if (!state.meta) state.meta = {}
+  if (state.meta.consumptionSplit) return false
+  ;(state.orders || []).forEach((order) => {
+    const issue = order.stages?.diamondSetting
+    const cons = order.stages?.consumption
+    if (!issue || !cons) return
+    CONSUMPTION_FIELDS.forEach((key) => {
+      if (!(key in issue)) return
+      if (cons[key] === undefined || cons[key] === '') cons[key] = issue[key]
+      delete issue[key]
+    })
+    if (TERMINAL_STATUSES.includes(issue.status) && !TERMINAL_STATUSES.includes(cons.status)) {
+      const completionDate = cons.completionDate || issue.completionDate || todayISO()
+      Object.assign(cons, {
+        status: 'Completed',
+        assignedPerson: cons.assignedPerson || issue.assignedPerson || '',
+        startDate: cons.startDate || issue.startDate || completionDate,
+        completionDate,
+        delayDays: 0,
+        delayState: 'completed',
+      })
+      const moved = Object.fromEntries(CONSUMPTION_FIELDS.filter((k) => k in cons).map((k) => [k, cons[k]]))
+      const entry = {
+        at: new Date().toISOString(),
+        user: 'System',
+        stage: 'consumption',
+        prevStatus: 'Pending',
+        newStatus: 'Completed',
+        action: 'Split from Diamond Setting',
+        remarks: 'Consumption details moved here from the old Diamond Setting stage.',
+      }
+      cons.history = cons.history || []
+      cons.history.push({ ...entry, id: uid('h'), fields: summarizeFields(moved) })
+      order.history = order.history || []
+      order.history.push({ ...entry, id: uid('h'), fields: [] })
+    }
+  })
+  // Roles an admin customised before the split keep the same reach: whoever
+  // could work Diamond Setting can now work Consumption too.
+  Object.values(state.rolePermissions || {}).forEach((perm) => {
+    if (perm?.stages?.includes('diamondSetting') && !perm.stages.includes('consumption')) perm.stages.push('consumption')
+  })
+  state.meta.consumptionSplit = true
+  writeRaw(state)
+  return true
+}
+
+// One-time, for Consumption moving from before Rhodium to after it: an order
+// sitting at Consumption with Rhodium not done yet now does Rhodium first.
+// Runs before ensureStageSequenceConsistency() so Rhodium is never
+// fake-completed as a "hole" behind the pointer.
+function migrateConsumptionAfterRhodium(state) {
+  if (!state.meta) state.meta = {}
+  if (state.meta.consumptionAfterRhodium) return false
+  ;(state.orders || []).forEach((order) => {
+    if (order.currentStage === 'consumption' && !TERMINAL_STATUSES.includes(order.stages?.rhodium?.status)) order.currentStage = 'rhodium'
+  })
+  state.meta.consumptionAfterRhodium = true
+  writeRaw(state)
+  return true
+}
+
 let STATE = readRaw()
 if (!STATE) {
   STATE = seedDatabase()
@@ -284,6 +410,8 @@ if (!STATE) {
 } else {
   ensureMasterDefaults(STATE)
   ensureStageRecordsComplete(STATE)
+  migrateConsumptionSplit(STATE)
+  migrateConsumptionAfterRhodium(STATE)
   ensureStageSequenceConsistency(STATE)
 }
 
@@ -489,6 +617,7 @@ function initStages(order) {
   s.filling = blankStageRecord()
   s.diamondSetting = blankStageRecord()
   s.rhodium = blankStageRecord()
+  s.consumption = blankStageRecord()
   s.finalQc = blankStageRecord({ checklist: [] })
   s.packing = blankStageRecord({ checklist: [] })
   s.delivery = blankStageRecord()
@@ -595,10 +724,29 @@ export const Orders = {
     }
 
     // Checked here too (not just in the form) so no save path can record
-    // more diamonds returned than were issued. Nothing has been written yet.
-    if (stageKey === 'diamondSetting') {
-      const returnError = Object.values(diamondReturnErrors({ ...order.stages[stageKey], ...patch }))[0]
-      if (returnError) return delay({ error: returnError })
+    // more diamonds / gem stones returned than Additional Issue handed out.
+    // Nothing has been written yet.
+    if (stageKey === 'consumption') {
+      const issued = order.stages.diamondSetting || {}
+      const consumptionError = Object.values(
+        consumptionErrors({
+          ...order.stages[stageKey],
+          ...patch,
+          issuedPcs: issued.issuedPcs,
+          issuedWeight: issued.issuedWeight,
+          gemstoneIssuedPcs: issued.gemstoneIssuedPcs,
+          gemstoneIssuedWeight: issued.gemstoneIssuedWeight,
+        })
+      )[0]
+      if (consumptionError) return delay({ error: consumptionError })
+    }
+
+    // Final QC can only complete once every checklist item is Pass or Fail.
+    if (stageKey === 'finalQc') {
+      const next = { ...order.stages[stageKey], ...patch }
+      if (TERMINAL_STATUSES.includes(next.status) && (next.checklist || []).some((r) => r.result !== 'Pass' && r.result !== 'Fail')) {
+        return delay({ error: 'Every Final QC checklist item must be marked Pass or Fail.' })
+      }
     }
 
     // Casting in a different gold purity than the order was booked in needs
@@ -694,10 +842,18 @@ export const Orders = {
       fields,
     })
 
-    // Advance workflow pointer + overall status
+    // Advance workflow pointer + overall status. The pointer only ever moves
+    // forward: re-submitting an earlier, already-completed stage (Edit
+    // (Correction)) fixes that stage's data but must not pull the order back
+    // to the stage right after it.
+    //
+    // It also skips stages already completed ahead of it (e.g. a Consumption
+    // entered before it was moved after Rhodium), landing on the next stage
+    // that still needs work.
     if (terminal) {
-      const nextIdx = idx + 1
-      if (nextIdx < STAGE_KEYS.length) {
+      let nextIdx = idx + 1
+      while (nextIdx < STAGE_KEYS.length - 1 && TERMINAL_STATUSES.includes(order.stages[STAGE_KEYS[nextIdx]]?.status)) nextIdx++
+      if (nextIdx < STAGE_KEYS.length && nextIdx > stageIndex(order.currentStage)) {
         order.currentStage = STAGE_KEYS[nextIdx]
         const nextStage = order.stages[STAGE_KEYS[nextIdx]] || (order.stages[STAGE_KEYS[nextIdx]] = blankStageRecord())
         if (!nextStage.startDate) nextStage.startDate = ''
@@ -919,7 +1075,10 @@ function seedDatabase() {
   const rolePermissions = null // null = use DEFAULT_ROLE_PERMISSIONS until admin customises
 
   return {
-    meta: { createdAt: now, updatedAt: now, version: 1 },
+    // Fresh seeds already have full master lists and the split Additional
+    // Issue / Consumption stages — see ensureMasterDefaults and
+    // migrateConsumptionSplit.
+    meta: { createdAt: now, updatedAt: now, version: 1, emptyMastersRefilled: true, consumptionSplit: true, consumptionAfterRhodium: true },
     users,
     customers,
     employees,

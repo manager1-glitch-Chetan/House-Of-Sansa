@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { cx } from '@/lib/utils'
 
-export default function Modal({ open, onClose, title, children, size = 'md', footer }) {
+export default function Modal({ open, onClose, title, children, size = 'md', footer, bodyClassName }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => e.key === 'Escape' && onClose?.()
@@ -29,7 +29,7 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
             <X size={18} />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
+        <div className={cx('max-h-[70vh] overflow-y-auto px-5 py-4', bodyClassName)}>{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-hos-ink-200 px-5 py-3">{footer}</div>}
       </div>
     </div>
