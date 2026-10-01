@@ -429,6 +429,27 @@ export function resetDatabase() {
   return delay(true)
 }
 
+// Clears every order — and everything that only exists because of an order:
+// notifications, the gold/diamond material ledger and order audit entries —
+// so the workflow can be tested again from a clean slate. Masters, customers,
+// employees, products, users and role permissions are left untouched.
+export function resetOrders(user) {
+  const count = STATE.orders.length
+  STATE.orders = []
+  STATE.notifications = []
+  STATE.materialTransactions = []
+  STATE.auditLogs = (STATE.auditLogs || []).filter((a) => a.entity !== 'order')
+  STATE.counters = { ...STATE.counters, order: 1001 }
+  // main.jsx seeds demo orders whenever the list is empty on load — this
+  // stops it refilling the list the reset just cleared.
+  STATE.meta.ordersReset = true
+  pushAudit({ user, entity: 'system', entityId: '-', action: 'RESET_ORDERS', details: `${count} orders cleared` })
+  persist()
+  return delay(count)
+}
+
+export const ordersWereReset = () => !!STATE.meta?.ordersReset
+
 export function exportDatabaseJSON() {
   return JSON.stringify(STATE, null, 2)
 }

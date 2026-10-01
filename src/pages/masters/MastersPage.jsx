@@ -4,8 +4,10 @@ import { cx } from '@/lib/utils'
 import { MASTER_TYPES } from '@/lib/constants'
 import { ROLES } from '@/lib/constants'
 import { Customers, Employees, Products } from '@/lib/db'
+import { useAuth } from '@/context/AuthContext'
 import SimpleMasterPanel from './SimpleMasterPanel'
 import EntityMasterPanel from './EntityMasterPanel'
+import ResetOrdersPanel from './ResetOrdersPanel'
 
 const GROUPS = [
   {
@@ -24,6 +26,7 @@ const GROUPS = [
 
 export default function MastersPage() {
   const [active, setActive] = useState('customer')
+  const { canOverride } = useAuth()
 
   return (
     <div>
@@ -94,6 +97,8 @@ export default function MastersPage() {
           )}
         </div>
       </div>
+      {/* Admin / Management only — Masters access can be granted to other roles. */}
+      {canOverride && <ResetOrdersPanel />}
     </div>
   )
 }
